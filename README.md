@@ -17,7 +17,7 @@ Week 7 starter project for Computer Graphics Fundamentals. It uses C++17 and Ope
 - Model, View and Projection matrices;
 - depth testing, framebuffer resize handling and FPS in the window title.
 
-The buildings are only placeholders. Later weeks can add windows, lamps, snow particles and Astana-inspired landmarks.
+The buildings, windows and lamps are still simple placeholders. Later weeks can add detailed architecture, trees, a bridge and Astana-inspired landmarks.
 
 ## Controls
 
@@ -32,7 +32,9 @@ The buildings are only placeholders. Later weeks can add windows, lamps, snow pa
 ├── .vscode/
 ├── shaders/
 │   ├── scene.vert
-│   └── scene.frag
+│   ├── scene.frag
+│   ├── snow.vert
+│   └── snow.frag
 ├── src/
 │   ├── main.cpp
 │   ├── Shader.cpp
