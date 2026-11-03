@@ -1,0 +1,32 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "CMake: Configure",
+            "type": "shell",
+            "command": "cmake",
+            "args": ["-S", ".", "-B", "build"],
+            "options": { "cwd": "${workspaceFolder}" },
+            "problemMatcher": []
+        },
+        {
+            "label": "CMake: Build",
+            "type": "shell",
+            "command": "cmake",
+            "args": ["--build", "build"],
+            "options": { "cwd": "${workspaceFolder}" },
+            "dependsOn": "CMake: Configure",
+            "problemMatcher": ["$gcc"],
+            "group": { "kind": "build", "isDefault": true }
+        },
+        {
+            "label": "Run Winter Astana",
+            "type": "shell",
+            "command": "${workspaceFolder}/build/winter_astana",
+            "options": { "cwd": "${workspaceFolder}" },
+            "dependsOn": "CMake: Build",
+            "problemMatcher": []
+        }
+    ]
+}
+
