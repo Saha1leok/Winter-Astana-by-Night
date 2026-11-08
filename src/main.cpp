@@ -6,12 +6,14 @@
 #include <glm/gtc/type_ptr.hpp>
 
 #include "Shader.h"
+#include "River.h"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <random>
@@ -61,10 +63,7 @@ struct Mesh {
     }
 };
 
-struct SurfaceData {
-    std::vector<float> vertices;
-    std::vector<unsigned int> indices;
-};
+using namespace frozenriver;
 
 struct SnowParticle {
     glm::vec3 position;
@@ -75,12 +74,37 @@ struct SnowParticle {
 float yawDegrees = -28.0f;
 float pitchDegrees = 18.0f;
 float cameraDistance = 27.0f;
+int cameraMode = 0;
+bool showFrost = true;
+bool showDrifts = true;
 bool dragging = false;
 double previousMouseX = 0.0;
 double previousMouseY = 0.0;
 
 void framebufferSizeCallback(GLFWwindow*, int width, int height) {
     glViewport(0, 0, width, height);
+}
+
+void keyCallback(GLFWwindow*, int key, int, int action, int) {
+    if (action != GLFW_PRESS) return;
+    if (key >= GLFW_KEY_1 && key <= GLFW_KEY_3) cameraMode = key - GLFW_KEY_1;
+    if (key == GLFW_KEY_F) showFrost = !showFrost;
+    if (key == GLFW_KEY_D) showDrifts = !showDrifts;
+}
+
+void saveFrame(const std::filesystem::path& path, int width, int height) {
+    if (width <= 0 || height <= 0) throw std::runtime_error("Cannot capture an empty framebuffer.");
+    std::vector<unsigned char> pixels(static_cast<std::size_t>(width) * height * 3);
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    glReadBuffer(GL_BACK);
+    glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
+    std::ofstream file(path, std::ios::binary);
+    file << "P6\n" << width << ' ' << height << "\n255\n";
+    for (int y = height - 1; y >= 0; --y) {
+        file.write(reinterpret_cast<const char*>(pixels.data() + static_cast<std::size_t>(y) * width * 3), width * 3);
+    }
+    if (!file) throw std::runtime_error("Cannot save capture: " + path.string());
+    std::cout << "Captured " << path << " (" << width << 'x' << height << ")\n";
 }
 
 void mouseButtonCallback(GLFWwindow* window, int button, int action, int) {
@@ -101,11 +125,13 @@ void cursorPositionCallback(GLFWwindow*, double x, double y) {
     const double deltaY = y - previousMouseY;
     previousMouseX = x;
     previousMouseY = y;
+    cameraMode = 0;
     yawDegrees += static_cast<float>(deltaX) * 0.25f;
     pitchDegrees = std::clamp(pitchDegrees - static_cast<float>(deltaY) * 0.25f, 8.0f, 80.0f);
 }
 
 void scrollCallback(GLFWwindow*, double, double yOffset) {
+    cameraMode = 0;
     cameraDistance = std::clamp(cameraDistance - static_cast<float>(yOffset) * 1.4f, 10.0f, 48.0f);
 }
 
@@ -125,136 +151,13 @@ void setMatrix(unsigned int program, const char* name, const glm::mat4& matrix) 
     glUniformMatrix4fv(glGetUniformLocation(program, name), 1, GL_FALSE, glm::value_ptr(matrix));
 }
 
-void drawObject(const Mesh& mesh, unsigned int program, const glm::mat4& model, const glm::vec3& color, bool ice, bool emissive = false) {
+void drawObject(const Mesh& mesh, unsigned int program, const glm::mat4& model, const glm::vec3& color, bool ice, bool emissive = false, bool snow = false) {
     setMatrix(program, "uModel", model);
     glUniform3fv(glGetUniformLocation(program, "uBaseColor"), 1, glm::value_ptr(color));
     glUniform1i(glGetUniformLocation(program, "uIsIce"), ice ? 1 : 0);
     glUniform1i(glGetUniformLocation(program, "uEmissive"), emissive ? 1 : 0);
+    glUniform1i(glGetUniformLocation(program, "uIsSnow"), snow ? 1 : 0);
     mesh.draw();
-}
-
-float riverCenter(float z) {
-    return 1.75f + 1.30f * std::sin((z + 1.5f) * 0.16f);
-}
-
-float riverHalfWidth(float z) {
-    return 2.45f + 0.052f * (z + 12.0f);
-}
-
-float snowHeight(float x, float z) {
-    const float base = 0.34f + 0.05f * std::sin(x * 0.50f) + 0.04f * std::cos(z * 0.42f);
-    const auto mound = [x, z](float centerX, float centerZ, float height, float radius) {
-        const float dx = x - centerX;
-        const float dz = z - centerZ;
-        return height * std::exp(-(dx * dx + dz * dz) / (radius * radius));
-    };
-    return base
-        + mound(-8.0f, 7.0f, 1.65f, 3.0f)
-        + mound(-4.3f, 9.0f, 0.95f, 2.3f)
-        + mound(-9.5f, 1.0f, 0.65f, 2.8f)
-        + mound(9.2f, 5.5f, 0.65f, 3.2f);
-}
-
-void addSurfaceVertex(std::vector<float>& vertices, float x, float y, float z) {
-    vertices.insert(vertices.end(), {x, y, z, 0.0f, 1.0f, 0.0f});
-}
-
-void addSnowVertex(std::vector<float>& vertices, float x, float z) {
-    constexpr float sampleStep = 0.08f;
-    const float height = snowHeight(x, z);
-    const float slopeX = (snowHeight(x + sampleStep, z) - snowHeight(x - sampleStep, z)) / (2.0f * sampleStep);
-    const float slopeZ = (snowHeight(x, z + sampleStep) - snowHeight(x, z - sampleStep)) / (2.0f * sampleStep);
-    const glm::vec3 normal = glm::normalize(glm::vec3(-slopeX, 1.0f, -slopeZ));
-    vertices.insert(vertices.end(), {x, height, z, normal.x, normal.y, normal.z});
-}
-
-SurfaceData createSnowBank(bool leftBank) {
-    constexpr int segments = 48;
-    constexpr int columns = 9;
-    constexpr float minimumZ = -12.0f;
-    constexpr float maximumZ = 12.0f;
-    constexpr float outerEdge = 13.5f;
-    SurfaceData surface;
-    surface.vertices.reserve((segments + 1) * (columns + 1) * 6);
-    surface.indices.reserve(segments * columns * 6);
-
-    for (int i = 0; i <= segments; ++i) {
-        const float t = static_cast<float>(i) / static_cast<float>(segments);
-        const float z = minimumZ + (maximumZ - minimumZ) * t;
-        const float center = riverCenter(z);
-        const float halfWidth = riverHalfWidth(z);
-        const float lowX = leftBank ? -outerEdge : center + halfWidth;
-        const float highX = leftBank ? center - halfWidth : outerEdge;
-        for (int column = 0; column <= columns; ++column) {
-            const float across = static_cast<float>(column) / static_cast<float>(columns);
-            const float x = lowX + (highX - lowX) * across;
-            addSnowVertex(surface.vertices, x, z);
-        }
-    }
-
-    for (int i = 0; i < segments; ++i) {
-        for (int column = 0; column < columns; ++column) {
-            const unsigned int a = static_cast<unsigned int>(i * (columns + 1) + column);
-            const unsigned int b = a + 1;
-            const unsigned int c = a + static_cast<unsigned int>(columns + 1);
-            const unsigned int d = c + 1;
-            surface.indices.insert(surface.indices.end(), {a, c, d, a, d, b});
-        }
-    }
-    return surface;
-}
-
-SurfaceData createRiver() {
-    constexpr int segments = 48;
-    constexpr float minimumZ = -12.0f;
-    constexpr float maximumZ = 12.0f;
-    SurfaceData surface;
-    surface.vertices.reserve((segments + 1) * 12);
-    surface.indices.reserve(segments * 6);
-
-    for (int i = 0; i <= segments; ++i) {
-        const float t = static_cast<float>(i) / static_cast<float>(segments);
-        const float z = minimumZ + (maximumZ - minimumZ) * t;
-        const float center = riverCenter(z);
-        const float halfWidth = riverHalfWidth(z) + 0.18f;
-        addSurfaceVertex(surface.vertices, center - halfWidth, 0.055f, z);
-        addSurfaceVertex(surface.vertices, center + halfWidth, 0.055f, z);
-    }
-
-    for (int i = 0; i < segments; ++i) {
-        const unsigned int a = static_cast<unsigned int>(i * 2);
-        const unsigned int b = a + 1;
-        const unsigned int c = a + 2;
-        const unsigned int d = a + 3;
-        surface.indices.insert(surface.indices.end(), {a, c, d, a, d, b});
-    }
-    return surface;
-}
-
-SurfaceData createBankWall(bool leftBank) {
-    constexpr int segments = 48;
-    constexpr float minimumZ = -12.0f;
-    constexpr float maximumZ = 12.0f;
-    SurfaceData surface;
-    surface.vertices.reserve((segments + 1) * 12);
-    surface.indices.reserve(segments * 12);
-
-    for (int i = 0; i <= segments; ++i) {
-        const float t = static_cast<float>(i) / static_cast<float>(segments);
-        const float z = minimumZ + (maximumZ - minimumZ) * t;
-        const float edgeX = riverCenter(z) + (leftBank ? -riverHalfWidth(z) : riverHalfWidth(z));
-        addSurfaceVertex(surface.vertices, edgeX, snowHeight(edgeX, z) - 0.02f, z);
-        addSurfaceVertex(surface.vertices, edgeX, 0.045f, z);
-    }
-
-    for (int i = 0; i < segments; ++i) {
-        const unsigned int a = static_cast<unsigned int>(i * 2);
-        const unsigned int b = a + 1;
-        const unsigned int c = a + 2;
-        const unsigned int d = a + 3;
-        surface.indices.insert(surface.indices.end(), {a, c, d, a, d, b, a, d, c, a, b, d});
-    }
-    return surface;
 }
 
 std::vector<float> cubeVertices() {
@@ -270,6 +173,26 @@ std::vector<float> cubeVertices() {
 }
 
 int main(int argc, char** argv) {
+    std::filesystem::path captureDirectory;
+    int frameLimit = 0;
+    for (int i = 1; i < argc; ++i) {
+        const std::string argument = argv[i];
+        if (argument == "--capture-dir" && i + 1 < argc) captureDirectory = argv[++i];
+        else if (argument == "--view" && i + 1 < argc) {
+            const std::string view = argv[++i];
+            if (view == "orbit") cameraMode = 0;
+            else if (view == "street") cameraMode = 1;
+            else if (view == "above") cameraMode = 2;
+            else { std::cerr << "--view requires orbit, street, or above.\n"; return EXIT_FAILURE; }
+        }
+        else if (argument == "--frames" && i + 1 < argc) {
+            try { frameLimit = std::stoi(argv[++i]); } catch (...) { frameLimit = -1; }
+            if (frameLimit <= 0) { std::cerr << "--frames requires a positive integer.\n"; return EXIT_FAILURE; }
+        } else {
+            std::cerr << "Usage: winter_astana [--capture-dir PATH] [--frames COUNT] [--view orbit|street|above]\n";
+            return EXIT_FAILURE;
+        }
+    }
     if (!glfwInit()) {
         std::cerr << "GLFW initialization failed.\n";
         return EXIT_FAILURE;
@@ -278,6 +201,8 @@ int main(int argc, char** argv) {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    // Keep the performance target and captures at 1280x720 on Retina displays too.
+    glfwWindowHint(GLFW_COCOA_RETINA_FRAMEBUFFER, GLFW_FALSE);
 #ifdef __APPLE__
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 #endif
@@ -294,6 +219,7 @@ int main(int argc, char** argv) {
     glfwSetMouseButtonCallback(window, mouseButtonCallback);
     glfwSetCursorPosCallback(window, cursorPositionCallback);
     glfwSetScrollCallback(window, scrollCallback);
+    glfwSetKeyCallback(window, keyCallback);
 
     glewExperimental = GL_TRUE;
     if (glewInit() != GLEW_OK) {
@@ -303,6 +229,8 @@ int main(int argc, char** argv) {
         return EXIT_FAILURE;
     }
     glGetError();
+    // Cocoa may finish applying the non-Retina backing size on its first event.
+    glfwPollEvents();
 
     int framebufferWidth = 0;
     int framebufferHeight = 0;
@@ -313,6 +241,8 @@ int main(int argc, char** argv) {
 
     int result = EXIT_SUCCESS;
     try {
+        if (!captureDirectory.empty()) std::filesystem::create_directories(captureDirectory);
+        std::cout << "Renderer: " << glGetString(GL_RENDERER) << "\nOpenGL: " << glGetString(GL_VERSION) << '\n';
         const std::filesystem::path shaderPath = shaderDirectory(argc > 0 ? argv[0] : "winter_astana");
         Shader shader((shaderPath / "scene.vert").string(), (shaderPath / "scene.frag").string());
         Shader snowShader((shaderPath / "snow.vert").string(), (shaderPath / "snow.frag").string());
@@ -325,11 +255,15 @@ int main(int argc, char** argv) {
         const SurfaceData riverData = createRiver();
         const SurfaceData leftWallData = createBankWall(true);
         const SurfaceData rightWallData = createBankWall(false);
+        const SurfaceData leftDriftData = createSnowDrift(true);
+        const SurfaceData rightDriftData = createSnowDrift(false);
         Mesh leftBank(leftBankData.vertices, leftBankData.indices);
         Mesh rightBank(rightBankData.vertices, rightBankData.indices);
         Mesh river(riverData.vertices, riverData.indices);
         Mesh leftWall(leftWallData.vertices, leftWallData.indices);
         Mesh rightWall(rightWallData.vertices, rightWallData.indices);
+        Mesh leftDrift(leftDriftData.vertices, leftDriftData.indices);
+        Mesh rightDrift(rightDriftData.vertices, rightDriftData.indices);
         Mesh cube(cubeVertices(), cubeIndices);
 
         std::mt19937 randomGenerator(7);
@@ -361,26 +295,54 @@ int main(int argc, char** argv) {
         double lastFpsUpdate = glfwGetTime();
         double previousFrameTime = lastFpsUpdate;
         int frameCount = 0;
+        int totalFrames = 0;
+        const double startTime = lastFpsUpdate;
+        const std::array<const char*, 5> captureNames{{"overview.ppm", "street.ppm", "above.ppm", "above-no-frost.ppm", "above-no-drifts.ppm"}};
 
         while (!glfwWindowShouldClose(window)) {
             if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
                 glfwSetWindowShouldClose(window, GLFW_TRUE);
             }
 
+            const double currentFrameTime = glfwGetTime();
+            const float deltaTime = captureDirectory.empty()
+                ? static_cast<float>(std::min(currentFrameTime - previousFrameTime, 0.05)) : 0.0f;
+            previousFrameTime = currentFrameTime;
+            if (!captureDirectory.empty()) {
+                cameraMode = std::min(totalFrames, 2);
+                showFrost = totalFrames != 3;
+                showDrifts = totalFrames != 4;
+            }
+            const float orbitX = static_cast<float>((glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS)
+                - (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS));
+            const float orbitY = static_cast<float>((glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS)
+                - (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS));
+            if (orbitX != 0 || orbitY != 0) {
+                cameraMode = 0;
+                yawDegrees += orbitX * 45.0f * deltaTime;
+                pitchDegrees = std::clamp(pitchDegrees + orbitY * 35.0f * deltaTime, 8.0f, 80.0f);
+            }
+
             glfwGetFramebufferSize(window, &framebufferWidth, &framebufferHeight);
+            glViewport(0, 0, framebufferWidth, framebufferHeight);
             const float aspect = framebufferHeight > 0 ? static_cast<float>(framebufferWidth) / static_cast<float>(framebufferHeight) : 1.0f;
             const float yaw = glm::radians(yawDegrees);
             const float pitch = glm::radians(pitchDegrees);
-            const glm::vec3 target(0.5f, 0.9f, -1.5f);
-            const glm::vec3 cameraPosition = target + cameraDistance * glm::vec3(
+            glm::vec3 target(0.5f, 0.9f, -1.5f);
+            glm::vec3 cameraPosition = target + cameraDistance * glm::vec3(
                 std::cos(pitch) * std::sin(yaw),
                 std::sin(pitch),
                 std::cos(pitch) * std::cos(yaw));
+            if (cameraMode == 1) {
+                const float x = riverCenter(9.0f) + riverHalfWidth(9.0f) + 0.75f;
+                cameraPosition = {x, snowHeight(x, 9.0f) + 1.60f, 9.0f};
+                target = {riverCenter(-2.0f), 0.055f, -2.0f};
+            } else if (cameraMode == 2) {
+                cameraPosition = {3.0f, 32.0f, 12.0f};
+                target = {0.5f, 0.0f, 0.0f};
+            }
             const glm::mat4 view = glm::lookAt(cameraPosition, target, glm::vec3(0.0f, 1.0f, 0.0f));
             const glm::mat4 projection = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 100.0f);
-            const double currentFrameTime = glfwGetTime();
-            const float deltaTime = static_cast<float>(std::min(currentFrameTime - previousFrameTime, 0.05));
-            previousFrameTime = currentFrameTime;
 
             glClearColor(0.025f, 0.045f, 0.095f, 1.0f);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -388,12 +350,18 @@ int main(int argc, char** argv) {
             setMatrix(shader.id(), "uView", view);
             setMatrix(shader.id(), "uProjection", projection);
             glUniform3fv(glGetUniformLocation(shader.id(), "uCameraPosition"), 1, glm::value_ptr(cameraPosition));
+            glUniform1i(glGetUniformLocation(shader.id(), "uShowFrost"), showFrost ? 1 : 0);
 
-            drawObject(leftBank, shader.id(), glm::mat4(1.0f), {0.80f, 0.87f, 0.95f}, false);
-            drawObject(rightBank, shader.id(), glm::mat4(1.0f), {0.80f, 0.87f, 0.95f}, false);
+            drawObject(leftBank, shader.id(), glm::mat4(1.0f), {0.80f, 0.87f, 0.95f}, false, false, true);
+            drawObject(rightBank, shader.id(), glm::mat4(1.0f), {0.80f, 0.87f, 0.95f}, false, false, true);
             drawObject(river, shader.id(), glm::mat4(1.0f), {0.10f, 0.29f, 0.50f}, true);
             drawObject(leftWall, shader.id(), glm::mat4(1.0f), {0.34f, 0.42f, 0.54f}, false);
             drawObject(rightWall, shader.id(), glm::mat4(1.0f), {0.34f, 0.42f, 0.54f}, false);
+
+            if (showDrifts) {
+                drawObject(leftDrift, shader.id(), glm::mat4(1.0f), {0.85f, 0.91f, 0.98f}, false, false, true);
+                drawObject(rightDrift, shader.id(), glm::mat4(1.0f), {0.85f, 0.91f, 0.98f}, false, false, true);
+            }
 
             const std::array<glm::vec3, 5> positions{{{-9.2f, 1.75f, -8.5f}, {-6.4f, 2.45f, -8.8f}, {-3.9f, 1.95f, -9.2f}, {6.2f, 2.75f, -8.4f}, {9.0f, 1.55f, -8.8f}}};
             const std::array<glm::vec3, 5> scales{{{2.1f, 2.8f, 1.8f}, {1.8f, 4.2f, 1.7f}, {2.0f, 3.2f, 1.8f}, {2.0f, 4.8f, 2.0f}, {2.8f, 2.4f, 1.8f}}};
@@ -452,21 +420,32 @@ int main(int argc, char** argv) {
             glDepthMask(GL_TRUE);
             glDisable(GL_BLEND);
 
+            if (!captureDirectory.empty()) {
+                saveFrame(captureDirectory / captureNames[totalFrames], framebufferWidth, framebufferHeight);
+            }
+            const GLenum error = glGetError();
+            if (error != GL_NO_ERROR) throw std::runtime_error("OpenGL error: " + std::to_string(error));
             glfwSwapBuffers(window);
             glfwPollEvents();
 
             ++frameCount;
+            ++totalFrames;
+            if ((!captureDirectory.empty() && totalFrames == static_cast<int>(captureNames.size()))
+                || (frameLimit > 0 && totalFrames >= frameLimit)) glfwSetWindowShouldClose(window, GLFW_TRUE);
             const double now = glfwGetTime();
             const double elapsed = now - lastFpsUpdate;
             if (elapsed >= 0.5) {
                 const double fps = static_cast<double>(frameCount) / elapsed;
                 std::ostringstream title;
-                title << "Winter Astana - Week 7 | FPS: " << std::fixed << std::setprecision(1) << fps;
+                title << "Winter Astana | 1 Orbit  2 Street  3 Above | F Frost " << (showFrost ? "on" : "off")
+                      << " | D Drifts " << (showDrifts ? "on" : "off") << " | FPS: " << std::fixed << std::setprecision(1) << fps;
                 glfwSetWindowTitle(window, title.str().c_str());
                 frameCount = 0;
                 lastFpsUpdate = now;
             }
         }
+        std::cout << "Rendered " << totalFrames << " frames; average " << totalFrames / (glfwGetTime() - startTime)
+                  << " FPS; OpenGL checks passed.\n";
         glDeleteVertexArrays(1, &snowVao);
         glDeleteBuffers(1, &snowVbo);
     } catch (const std::exception& error) {
