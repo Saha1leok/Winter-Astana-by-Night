@@ -8,6 +8,10 @@ uniform vec3 uCameraPosition;
 uniform bool uIsIce;
 uniform bool uEmissive;
 
+const int MAX_LAMPS = 12;
+uniform int uLampCount;
+uniform vec3 uLampPositions[MAX_LAMPS];
+
 out vec4 fragmentColor;
 
 vec2 randomPoint(vec2 cell) {
@@ -57,11 +61,20 @@ void main() {
         color += vec3(0.08, 0.16, 0.22) * fresnel;
     }
 
+    // Local diffuse light; no shadow maps or occlusion.
+    if (!uEmissive) {
+        for (int i = 0; i < uLampCount; ++i) {
+            vec3 toLight = uLampPositions[i] - vWorldPosition;
+            float d = length(toLight);
+            float attenuation = (1.0 - smoothstep(2.0, 4.2, d)) / (1.0 + 0.35*d + 0.40*d*d);
+            float lambert = max(dot(normal, toLight / max(d, 0.001)), 0.0);
+            color += uBaseColor * vec3(1.0, 0.62, 0.24) * 2.8 * lambert * attenuation;
+        }
+    }
+
     float distanceFromCamera = length(uCameraPosition - vWorldPosition);
     float fogAmount = smoothstep(22.0, 48.0, distanceFromCamera);
     vec3 fogColor = vec3(0.025, 0.045, 0.095);
     color = mix(color, fogColor, fogAmount * 0.72);
     fragmentColor = vec4(color, 1.0);
 }
-
-

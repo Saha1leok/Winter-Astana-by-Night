@@ -6,6 +6,10 @@
 #include <glm/gtc/type_ptr.hpp>
 
 #include "Shader.h"
+#include "Lighting.h"
+#include "FrameCapture.h"
+#include <fstream>
+#include <cstdint>
 
 #include <algorithm>
 #include <array>
@@ -76,6 +80,14 @@ float yawDegrees = -28.0f;
 float pitchDegrees = 18.0f;
 float cameraDistance = 27.0f;
 bool dragging = false;
+lighting::State lightState;
+
+void keyCallback(GLFWwindow*, int key, int, int action, int) {
+    if (action != GLFW_PRESS) return; // Ignore key repeat: one press, one toggle.
+    if (key == GLFW_KEY_1) lightState.windows = !lightState.windows;
+    if (key == GLFW_KEY_2) lightState.lamps = !lightState.lamps;
+    if (key == GLFW_KEY_L) lightState.toggleAll();
+}
 double previousMouseX = 0.0;
 double previousMouseY = 0.0;
 
@@ -270,6 +282,8 @@ std::vector<float> cubeVertices() {
 }
 
 int main(int argc, char** argv) {
+    const bool smokeTest = argc == 3 && std::string(argv[1]) == "--smoke-test";
+    const std::filesystem::path captures = smokeTest ? argv[2] : "";
     if (!glfwInit()) {
         std::cerr << "GLFW initialization failed.\n";
         return EXIT_FAILURE;
@@ -278,6 +292,7 @@ int main(int argc, char** argv) {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    if (smokeTest) glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
 #ifdef __APPLE__
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 #endif
@@ -294,6 +309,7 @@ int main(int argc, char** argv) {
     glfwSetMouseButtonCallback(window, mouseButtonCallback);
     glfwSetCursorPosCallback(window, cursorPositionCallback);
     glfwSetScrollCallback(window, scrollCallback);
+    glfwSetKeyCallback(window, keyCallback);
 
     glewExperimental = GL_TRUE;
     if (glewInit() != GLEW_OK) {
@@ -332,6 +348,34 @@ int main(int argc, char** argv) {
         Mesh rightWall(rightWallData.vertices, rightWallData.indices);
         Mesh cube(cubeVertices(), cubeIndices);
 
+        const std::array<glm::vec3, 5> positions{{{-9.2f, 1.75f, -8.5f}, {-6.4f, 2.45f, -8.8f}, {-3.9f, 1.95f, -9.2f}, {6.2f, 2.75f, -8.4f}, {9.0f, 1.55f, -8.8f}}};
+        const std::array<glm::vec3, 5> scales{{{2.1f, 2.8f, 1.8f}, {1.8f, 4.2f, 1.7f}, {2.0f, 3.2f, 1.8f}, {2.0f, 4.8f, 2.0f}, {2.8f, 2.4f, 1.8f}}};
+        const std::array<glm::vec3, 5> colors{{{0.34f,0.39f,0.52f}, {0.42f,0.48f,0.62f}, {0.38f,0.42f,0.55f}, {0.46f,0.40f,0.55f}, {0.35f,0.45f,0.58f}}};
+
+        std::vector<lighting::Window> windows;
+        for (std::size_t i = 0; i < positions.size(); ++i) {
+            auto panes = lighting::buildingWindows(positions[i], scales[i], 42u + static_cast<std::uint32_t>(i));
+            windows.insert(windows.end(), panes.begin(), panes.end());
+        }
+        std::vector<lighting::Lamp> lamps;
+        for (float z : {-7.0f, -3.5f, 0.0f, 3.5f, 7.0f, 10.0f}) {
+            for (float side : {-1.0f, 1.0f}) {
+                const float x = riverCenter(z) + side * (riverHalfWidth(z) + 0.55f);
+                const glm::vec3 base(x, snowHeight(x, z), z);
+                lamps.push_back({base, base + glm::vec3(0, 1.88f, 0)});
+            }
+        }
+        std::cout << "Dilnaz lighting: " << windows.size() << " windows, " << lamps.size()
+                  << " lamps. 1: windows | 2: lamps | L: all | Esc: exit\n";
+        if (smokeTest) {
+            std::filesystem::create_directories(captures);
+            std::cout << "OpenGL: " << glGetString(GL_VERSION) << '\n';
+            const auto occupied = std::count_if(windows.begin(), windows.end(), [](const auto& w) { return w.occupied; });
+            if (occupied == 0 || occupied == static_cast<int>(windows.size()))
+                throw std::runtime_error("Window occupancy must contain lit and unlit rooms");
+            keyCallback(window, GLFW_KEY_1, 0, GLFW_REPEAT, 0);
+            if (!lightState.windows) throw std::runtime_error("Key repeat changed light state");
+        }
         std::mt19937 randomGenerator(7);
         std::uniform_real_distribution<float> xDistribution(-13.0f, 13.0f);
         std::uniform_real_distribution<float> yDistribution(0.5f, 12.0f);
@@ -361,8 +405,21 @@ int main(int argc, char** argv) {
         double lastFpsUpdate = glfwGetTime();
         double previousFrameTime = lastFpsUpdate;
         int frameCount = 0;
+        int testFrame = 0;
 
         while (!glfwWindowShouldClose(window)) {
+            if (smokeTest) {
+                if (testFrame == 1) keyCallback(window, GLFW_KEY_1, 0, GLFW_PRESS, 0);
+                if (testFrame == 2) {
+                    keyCallback(window, GLFW_KEY_1, 0, GLFW_PRESS, 0);
+                    keyCallback(window, GLFW_KEY_2, 0, GLFW_PRESS, 0);
+                }
+                if (testFrame == 3) keyCallback(window, GLFW_KEY_L, 0, GLFW_PRESS, 0);
+                const bool expectedWindows = testFrame == 0 || testFrame == 2;
+                const bool expectedLamps = testFrame < 2;
+                if (lightState.windows != expectedWindows || lightState.lamps != expectedLamps)
+                    throw std::runtime_error("Lighting keyboard state mismatch");
+            }
             if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
                 glfwSetWindowShouldClose(window, GLFW_TRUE);
             }
@@ -379,7 +436,7 @@ int main(int argc, char** argv) {
             const glm::mat4 view = glm::lookAt(cameraPosition, target, glm::vec3(0.0f, 1.0f, 0.0f));
             const glm::mat4 projection = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 100.0f);
             const double currentFrameTime = glfwGetTime();
-            const float deltaTime = static_cast<float>(std::min(currentFrameTime - previousFrameTime, 0.05));
+            const float deltaTime = smokeTest ? 0.0f : static_cast<float>(std::min(currentFrameTime - previousFrameTime, 0.05));
             previousFrameTime = currentFrameTime;
 
             glClearColor(0.025f, 0.045f, 0.095f, 1.0f);
@@ -389,42 +446,41 @@ int main(int argc, char** argv) {
             setMatrix(shader.id(), "uProjection", projection);
             glUniform3fv(glGetUniformLocation(shader.id(), "uCameraPosition"), 1, glm::value_ptr(cameraPosition));
 
+            lighting::uploadLamps(shader.id(), lamps, lightState.lamps);
+
             drawObject(leftBank, shader.id(), glm::mat4(1.0f), {0.80f, 0.87f, 0.95f}, false);
             drawObject(rightBank, shader.id(), glm::mat4(1.0f), {0.80f, 0.87f, 0.95f}, false);
             drawObject(river, shader.id(), glm::mat4(1.0f), {0.10f, 0.29f, 0.50f}, true);
             drawObject(leftWall, shader.id(), glm::mat4(1.0f), {0.34f, 0.42f, 0.54f}, false);
             drawObject(rightWall, shader.id(), glm::mat4(1.0f), {0.34f, 0.42f, 0.54f}, false);
 
-            const std::array<glm::vec3, 5> positions{{{-9.2f, 1.75f, -8.5f}, {-6.4f, 2.45f, -8.8f}, {-3.9f, 1.95f, -9.2f}, {6.2f, 2.75f, -8.4f}, {9.0f, 1.55f, -8.8f}}};
-            const std::array<glm::vec3, 5> scales{{{2.1f, 2.8f, 1.8f}, {1.8f, 4.2f, 1.7f}, {2.0f, 3.2f, 1.8f}, {2.0f, 4.8f, 2.0f}, {2.8f, 2.4f, 1.8f}}};
-            const std::array<glm::vec3, 5> colors{{{0.34f,0.39f,0.52f}, {0.42f,0.48f,0.62f}, {0.38f,0.42f,0.55f}, {0.46f,0.40f,0.55f}, {0.35f,0.45f,0.58f}}};
             for (std::size_t i = 0; i < positions.size(); ++i) {
                 const glm::mat4 model = glm::translate(glm::mat4(1.0f), positions[i]) * glm::scale(glm::mat4(1.0f), scales[i]);
                 drawObject(cube, shader.id(), model, colors[i], false);
 
-                for (int row = 0; row < 3; ++row) {
-                    for (int column = -1; column <= 1; column += 2) {
-                        const glm::vec3 windowPosition = positions[i] + glm::vec3(
-                            static_cast<float>(column) * scales[i].x * 0.24f,
-                            -scales[i].y * 0.28f + static_cast<float>(row) * scales[i].y * 0.27f,
-                            scales[i].z * 0.505f);
-                        const glm::mat4 windowModel = glm::translate(glm::mat4(1.0f), windowPosition)
-                            * glm::scale(glm::mat4(1.0f), {0.24f, 0.30f, 0.045f});
-                        drawObject(cube, shader.id(), windowModel, {1.0f, 0.62f, 0.16f}, false, true);
-                    }
-                }
             }
 
-            const std::array<float, 6> lampZ{{-7.0f, -3.5f, 0.0f, 3.5f, 7.0f, 10.0f}};
-            for (float z : lampZ) {
-                const float x = riverCenter(z) - riverHalfWidth(z) - 0.42f;
-                const float groundY = snowHeight(x, z);
-                const glm::mat4 postModel = glm::translate(glm::mat4(1.0f), {x, groundY + 0.72f, z})
-                    * glm::scale(glm::mat4(1.0f), {0.11f, 1.45f, 0.11f});
-                drawObject(cube, shader.id(), postModel, {0.055f, 0.065f, 0.085f}, false);
-                const glm::mat4 lampModel = glm::translate(glm::mat4(1.0f), {x, groundY + 1.53f, z})
-                    * glm::scale(glm::mat4(1.0f), {0.30f, 0.26f, 0.30f});
-                drawObject(cube, shader.id(), lampModel, {1.0f, 0.70f, 0.28f}, false, true);
+            for (const auto& pane : windows) {
+                const bool on = lightState.windows && pane.occupied;
+                const auto model = glm::translate(glm::mat4(1.0f), pane.position)
+                    * glm::scale(glm::mat4(1.0f), pane.size);
+                drawObject(cube, shader.id(), model, on ? pane.color : glm::vec3(0.025f, 0.045f, 0.075f), false, on);
+            }
+            for (const auto& lamp : lamps) {
+                auto box = [&](glm::vec3 p, glm::vec3 size, glm::vec3 color, bool emission = false) {
+                    drawObject(cube, shader.id(), glm::translate(glm::mat4(1.0f), p)
+                        * glm::scale(glm::mat4(1.0f), size), color, false, emission);
+                };
+                const glm::vec3 metal(0.055f, 0.065f, 0.085f);
+                box(lamp.base + glm::vec3(0, 0.10f, 0), {0.27f, 0.20f, 0.27f}, metal);
+                box(lamp.base + glm::vec3(0, 0.89f, 0), {0.09f, 1.78f, 0.09f}, metal);
+                box(lamp.bulb, {0.27f, 0.29f, 0.27f}, lightState.lamps
+                    ? glm::vec3(1.0f, 0.72f, 0.32f) : glm::vec3(0.08f, 0.09f, 0.12f), lightState.lamps);
+                box(lamp.bulb + glm::vec3(0, 0.20f, 0), {0.42f, 0.10f, 0.42f}, metal);
+                box(lamp.bulb + glm::vec3(0, 0.27f, 0), {0.44f, 0.045f, 0.44f}, {0.73f, 0.82f, 0.92f});
+                for (float dx : {-0.14f, 0.14f})
+                    for (float dz : {-0.14f, 0.14f})
+                        box(lamp.bulb + glm::vec3(dx, 0, dz), {0.025f, 0.33f, 0.025f}, metal);
             }
 
             for (std::size_t i = 0; i < snowParticles.size(); ++i) {
@@ -452,6 +508,18 @@ int main(int argc, char** argv) {
             glDepthMask(GL_TRUE);
             glDisable(GL_BLEND);
 
+            if (smokeTest) {
+                const std::array<const char*, 4> names{{"all-on.bmp", "windows-off.bmp", "lamps-off.bmp", "all-off.bmp"}};
+                captureBmp(captures / names[testFrame], framebufferWidth, framebufferHeight);
+                const auto error = glGetError();
+                if (error != GL_NO_ERROR) throw std::runtime_error("OpenGL error: " + std::to_string(error));
+                std::cout << "PASS " << names[testFrame] << '\n';
+                if (++testFrame == 4) {
+                    keyCallback(window, GLFW_KEY_L, 0, GLFW_PRESS, 0);
+                    if (!lightState.windows || !lightState.lamps) throw std::runtime_error("All-on toggle failed");
+                    glfwSetWindowShouldClose(window, GLFW_TRUE);
+                }
+            }
             glfwSwapBuffers(window);
             glfwPollEvents();
 
@@ -461,7 +529,8 @@ int main(int argc, char** argv) {
             if (elapsed >= 0.5) {
                 const double fps = static_cast<double>(frameCount) / elapsed;
                 std::ostringstream title;
-                title << "Winter Astana - Week 7 | FPS: " << std::fixed << std::setprecision(1) << fps;
+                title << "Winter Astana | 1 Windows: " << (lightState.windows ? "ON" : "OFF")
+                      << " | 2 Lamps: " << (lightState.lamps ? "ON" : "OFF") << " | L All | FPS: " << std::fixed << std::setprecision(1) << fps;
                 glfwSetWindowTitle(window, title.str().c_str());
                 frameCount = 0;
                 lastFpsUpdate = now;
@@ -478,4 +547,3 @@ int main(int argc, char** argv) {
     glfwTerminate();
     return result;
 }
-

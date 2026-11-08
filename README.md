@@ -17,10 +17,13 @@ Week 7 starter project for Computer Graphics Fundamentals. It uses C++17 and Ope
 - Model, View and Projection matrices;
 - depth testing, framebuffer resize handling and FPS in the window title.
 
-The buildings, windows and lamps are still simple placeholders. Later weeks can add detailed architecture, trees, a bridge and Astana-inspired landmarks.
+Buildings remain simple placeholders. Dilnaz adds 300 facade windows with a reproducible mix of occupied and dark rooms, 12 framed lamps, and local warm illumination on the snow. See [DILNAZ.md](DILNAZ.md) for the handoff, build commands and verification.
 
 ## Controls
 
+- Press **1**: toggle window lighting.
+- Press **2**: toggle street lamps and their local illumination.
+- Press **L**: turn all lighting off; press again to turn it on.
 - Hold the **left mouse button** and drag: orbit around the scene.
 - Use the **mouse wheel**: zoom in or out.
 - Press **Esc**: close the program.
@@ -38,7 +41,10 @@ The buildings, windows and lamps are still simple placeholders. Later weeks can 
 ├── src/
 │   ├── main.cpp
 │   ├── Shader.cpp
-│   └── Shader.h
+│   ├── Shader.h
+│   ├── Lighting.cpp
+│   ├── Lighting.h
+│   └── FrameCapture.h
 ├── CMakeLists.txt
 └── README.md
 ```
