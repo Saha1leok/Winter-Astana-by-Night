@@ -7,6 +7,12 @@ uniform vec3 uBaseColor;
 uniform vec3 uCameraPosition;
 uniform bool uIsIce;
 uniform bool uEmissive;
+uniform float uEmissionStrength;
+
+const int MAX_LAMPS = 12;
+uniform int uLampCount;
+uniform vec3 uLampPositions[MAX_LAMPS];
+uniform float uLampStrengths[MAX_LAMPS];
 
 out vec4 fragmentColor;
 
@@ -44,7 +50,9 @@ void main() {
     vec3 normal = normalize(vWorldNormal);
     vec3 lightDirection = normalize(vec3(-0.35, 1.0, 0.25));
     float diffuse = max(dot(normal, lightDirection), 0.0);
-    vec3 color = uEmissive ? uBaseColor * 1.35 : uBaseColor * (0.34 + 0.66 * diffuse);
+    vec3 color = uEmissive
+        ? mix(vec3(0.025, 0.045, 0.075) * (0.34 + 0.66 * diffuse), uBaseColor * 1.35, uEmissionStrength)
+        : uBaseColor * (0.34 + 0.66 * diffuse);
 
     if (uIsIce) {
         float mainCracks = cellularCrack(vWorldPosition.xz * 0.48);
@@ -57,11 +65,20 @@ void main() {
         color += vec3(0.08, 0.16, 0.22) * fresnel;
     }
 
+    // Local diffuse light; no shadow maps or occlusion.
+    if (!uEmissive) {
+        for (int i = 0; i < uLampCount; ++i) {
+            vec3 toLight = uLampPositions[i] - vWorldPosition;
+            float d = length(toLight);
+            float attenuation = (1.0 - smoothstep(2.0, 4.2, d)) / (1.0 + 0.35*d + 0.40*d*d);
+            float lambert = max(dot(normal, toLight / max(d, 0.001)), 0.0);
+            color += uBaseColor * vec3(1.0, 0.62, 0.24) * 2.8 * lambert * attenuation * uLampStrengths[i];
+        }
+    }
+
     float distanceFromCamera = length(uCameraPosition - vWorldPosition);
     float fogAmount = smoothstep(22.0, 48.0, distanceFromCamera);
     vec3 fogColor = vec3(0.025, 0.045, 0.095);
     color = mix(color, fogColor, fogAmount * 0.72);
     fragmentColor = vec4(color, 1.0);
 }
-
-
