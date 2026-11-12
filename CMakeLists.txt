@@ -18,6 +18,7 @@ find_package(glm CONFIG REQUIRED)
 add_executable(winter_astana
     src/main.cpp
     src/Shader.cpp
+    src/River.cpp
     src/Lighting.cpp
     src/SceneDirector.cpp
     src/Fireworks.cpp
@@ -44,6 +45,14 @@ if(MSVC)
     target_compile_options(winter_astana PRIVATE /W4)
 else()
     target_compile_options(winter_astana PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+include(CTest)
+if(BUILD_TESTING)
+    add_executable(river_geometry_test tests/river_geometry_test.cpp src/River.cpp)
+    target_include_directories(river_geometry_test PRIVATE src)
+    target_link_libraries(river_geometry_test PRIVATE glm::glm)
+    add_test(NAME river_geometry COMMAND river_geometry_test)
 endif()
 
 add_custom_command(TARGET winter_astana POST_BUILD
