@@ -7,23 +7,29 @@ Week 7 starter project for Computer Graphics Fundamentals. It uses C++17 and Ope
 - two low-poly snow banks with visible snow mounds and uneven height;
 - a separate wide, curved frozen-river mesh with a procedural crack/shimmer pattern;
 - simple raised embankment walls along the river;
-- five optional low-poly buildings for scale and composition;
+- detailed low-poly city blocks and Khan Shatyr, Bayterek and Ak Orda landmarks;
 - animated falling snow particles;
 - warm glowing windows and simple lamps along the embankment;
 - distance fog and an animated ice shimmer;
 - orbit camera controlled by the mouse;
+- automatic animated camera rise, sequential block lighting and a fireworks finale;
 - custom GLSL vertex and fragment shaders;
 - VAO, VBO and EBO mesh data;
 - Model, View and Projection matrices;
 - depth testing, framebuffer resize handling and FPS in the window title.
 
-The buildings, windows and lamps are still simple placeholders. Later weeks can add detailed architecture, trees, a bridge and Astana-inspired landmarks.
+The reveal continues the `feature/city-layout-modeling` scene and integrates Member 2's lighting from `dilnaz-lighting`. See [INTEGRATION.md](INTEGRATION.md) for the Member 3 particle and Member 5 timing interfaces and current limitations.
 
 ## Controls
 
 - Hold the **left mouse button** and drag: orbit around the scene.
 - Use the **mouse wheel**: zoom in or out.
+- Press **R**: replay the camera reveal from the current view.
+- Press **Space**: skip the reveal and immediately regain orbit control.
+- Press **1** / **2**: toggle windows / lamps; **L**: toggle all lighting.
 - Press **Esc**: close the program.
+
+The reveal runs automatically on launch. Mouse orbit and zoom become available after the finale (14.5 seconds), or immediately after **Space**. Lights fade in one block at a time as their skyline probes enter the camera view.
 
 ## Project structure
 
@@ -34,11 +40,20 @@ The buildings, windows and lamps are still simple placeholders. Later weeks can 
 │   ├── scene.vert
 │   ├── scene.frag
 │   ├── snow.vert
-│   └── snow.frag
+│   ├── snow.frag
+│   ├── fireworks.vert
+│   └── fireworks.frag
 ├── src/
 │   ├── main.cpp
 │   ├── Shader.cpp
-│   └── Shader.h
+│   ├── Shader.h
+│   ├── Lighting.cpp / Lighting.h
+│   ├── SceneDirector.cpp / SceneDirector.h
+│   ├── Fireworks.cpp / Fireworks.h
+│   ├── FireworkRenderer.cpp / FireworkRenderer.h
+│   └── FrameCapture.h
+├── tests/reveal_tests.cpp
+├── INTEGRATION.md
 ├── CMakeLists.txt
 └── README.md
 ```
@@ -104,4 +119,20 @@ The ground, river and buildings are separate meshes. The river center and width 
 
 ## Verification status
 
-The source is intended for OpenGL 3.3 Core and uses only GLFW, GLEW, GLM and standard C++. See the handoff note for the exact checks completed in the preparation environment.
+The source targets OpenGL 3.3 Core. Build and logic tests:
+
+```bash
+cmake -S . -B build -DBUILD_TESTING=ON
+cmake --build build
+ctest --test-dir build --output-on-failure
+```
+
+Logic tests run without opening a window and cover input limits, camera handoff, replay/skip, sequential lighting, visibility, timing at 30/60/144 FPS, stalled frames and bounded particle lifetimes. To also run the real OpenGL smoke test on a machine with a display:
+
+```bash
+cmake -S . -B build -DWINTER_ASTANA_GRAPHICS_TESTS=ON
+cmake --build build
+ctest --test-dir build --output-on-failure
+```
+
+Or run `./build/winter_astana --smoke-test build/reveal-captures` directly. It renders 15 simulated seconds, captures five BMP frames, checks OpenGL errors, verifies all four blocks and exercises the keyboard and mouse callbacks. Build, logic tests and the OpenGL smoke test were verified on macOS with AppleClang 17. Windows/Linux runtime checks remain for teammates on those platforms.
