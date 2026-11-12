@@ -19,7 +19,24 @@ add_executable(winter_astana
     src/main.cpp
     src/Shader.cpp
     src/River.cpp
+    src/Lighting.cpp
+    src/SceneDirector.cpp
+    src/Fireworks.cpp
+    src/FireworkRenderer.cpp
 )
+
+include(CTest)
+if(BUILD_TESTING)
+    add_executable(reveal_tests tests/reveal_tests.cpp src/SceneDirector.cpp src/Fireworks.cpp)
+    target_include_directories(reveal_tests PRIVATE src)
+    target_link_libraries(reveal_tests PRIVATE glm::glm)
+    add_test(NAME reveal_logic COMMAND reveal_tests)
+    option(WINTER_ASTANA_GRAPHICS_TESTS "Run the OpenGL smoke test (requires a display)" OFF)
+    if(WINTER_ASTANA_GRAPHICS_TESTS)
+        add_test(NAME reveal_graphics COMMAND winter_astana --smoke-test "${CMAKE_CURRENT_BINARY_DIR}/reveal-captures")
+        set_tests_properties(reveal_graphics PROPERTIES TIMEOUT 180)
+    endif()
+endif()
 
 target_include_directories(winter_astana PRIVATE src)
 target_link_libraries(winter_astana PRIVATE OpenGL::GL glfw GLEW::GLEW glm::glm)
