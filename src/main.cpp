@@ -156,11 +156,14 @@ void setMatrix(unsigned int program, const char* name, const glm::mat4& matrix) 
     glUniformMatrix4fv(glGetUniformLocation(program, name), 1, GL_FALSE, glm::value_ptr(matrix));
 }
 
-void drawObject(const Mesh& mesh, unsigned int program, const glm::mat4& model, const glm::vec3& color, bool ice, bool emissive = false, float emissionStrength = 1.0f) {
+void drawObject(const Mesh& mesh, unsigned int program, const glm::mat4& model,
+                const glm::vec3& color, bool ice, bool emissive = false,
+                float emissionStrength = 1.0f, bool ground = false) {
     setMatrix(program, "uModel", model);
     glUniform3fv(glGetUniformLocation(program, "uBaseColor"), 1, glm::value_ptr(color));
     glUniform1i(glGetUniformLocation(program, "uIsIce"), ice ? 1 : 0);
     glUniform1i(glGetUniformLocation(program, "uEmissive"), emissive ? 1 : 0);
+    glUniform1i(glGetUniformLocation(program, "uIsGround"), ground ? 1 : 0);
     glUniform1f(glGetUniformLocation(program, "uEmissionStrength"), emissionStrength);
     mesh.draw();
 }
@@ -199,13 +202,18 @@ void addSnowVertex(std::vector<float>& vertices, float x, float z) {
     const float height = snowHeight(x, z);
     const float slopeX = (snowHeight(x + sampleStep, z) - snowHeight(x - sampleStep, z)) / (2.0f * sampleStep);
     const float slopeZ = (snowHeight(x, z + sampleStep) - snowHeight(x, z - sampleStep)) / (2.0f * sampleStep);
-    const glm::vec3 normal = glm::normalize(glm::vec3(-slopeX, 1.0f, -slopeZ));
+    const glm::vec3 terrainNormal = glm::normalize(glm::vec3(-slopeX, 1.0f, -slopeZ));
+    // Snow scatters light strongly; bias its shading normal toward the sky so
+    // broad terrain cells do not resemble hard cast shadows.
+    const glm::vec3 normal = glm::normalize(glm::mix(terrainNormal, glm::vec3(0,1,0), 0.72f));
     vertices.insert(vertices.end(), {x, height, z, normal.x, normal.y, normal.z});
 }
 
 SurfaceData createSnowBank(bool leftBank) {
-    constexpr int segments = 48;
-    constexpr int columns = 9;
+    // A denser grid prevents long low-poly triangles from reading as large,
+    // misplaced cast shadows on the snow.
+    constexpr int segments = 96;
+    constexpr int columns = 24;
     constexpr float minimumZ = -16.0f;
     constexpr float maximumZ = 19.0f;
     constexpr float outerEdge = 19.0f;
@@ -410,8 +418,10 @@ SurfaceData radialMesh(const std::vector<glm::vec2>& profile, int sides = 16) {
 // around the three monuments so the wide camera reveal remains readable.
 void drawRoadTile(const Mesh& cube, unsigned int program, float x, float z,
                   float width, float depth) {
-    const float y = snowHeight(x,z)+0.06f;
-    cityBox(cube,program,{x,y,z},{width,0.09f,depth},{0.24f,0.30f,0.40f});
+    const float y = snowHeight(x,z)+0.035f;
+    // Pale, thin winter paving reads as a road instead of a hard black shadow
+    // where the tiles intersect the uneven snow surface.
+    cityBox(cube,program,{x,y,z},{width,0.055f,depth},{0.48f,0.55f,0.66f});
 }
 
 void drawCityRoads(const Mesh& cube, unsigned int program) {
@@ -1126,8 +1136,8 @@ int main(int argc, char** argv) {
             if (!lampStrengths.empty()) glUniform1fv(glGetUniformLocation(shader.id(), "uLampStrengths[0]"),
                 static_cast<GLsizei>(lampStrengths.size()), lampStrengths.data());
 
-            drawObject(leftBank, shader.id(), glm::mat4(1.0f), {0.80f, 0.87f, 0.95f}, false);
-            drawObject(rightBank, shader.id(), glm::mat4(1.0f), {0.80f, 0.87f, 0.95f}, false);
+            drawObject(leftBank, shader.id(), glm::mat4(1.0f), {0.80f, 0.87f, 0.95f}, false, false, 1.0f, true);
+            drawObject(rightBank, shader.id(), glm::mat4(1.0f), {0.80f, 0.87f, 0.95f}, false, false, 1.0f, true);
             drawObject(river, shader.id(), glm::mat4(1.0f), {0.055f, 0.16f, 0.34f}, true);
             drawObject(leftWall, shader.id(), glm::mat4(1.0f), {0.34f, 0.42f, 0.54f}, false);
             drawObject(rightWall, shader.id(), glm::mat4(1.0f), {0.34f, 0.42f, 0.54f}, false);
