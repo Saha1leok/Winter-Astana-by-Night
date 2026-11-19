@@ -16,4 +16,3 @@ private:
     glm::mat4 localTransform_;
     const SceneNode* parent_;
 };
-

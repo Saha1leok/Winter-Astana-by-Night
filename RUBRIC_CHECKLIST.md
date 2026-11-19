@@ -34,4 +34,3 @@ This checklist records verifiable repository evidence. It does not replace the r
 5. Replay (`R`) and skip (`Space`) the reveal.
 6. Point out the lamp parent-child hierarchy and the Blinn-Phong shader terms.
 7. Show procedural ice and the fireworks/snow stretch goals.
-

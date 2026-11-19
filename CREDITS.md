@@ -16,4 +16,3 @@ OpenAI Codex assisted with code review, build repair, the rubric audit, the expl
 | OpenGL | Graphics API supplied by the operating system/driver | https://www.khronos.org/opengl/ | Platform implementation |
 
 If the team later adds a model, image, audio file, shader snippet, tutorial-derived code, or font, add its author, direct link, exact license, and the files where it is used before release `v1.0`.
-
