@@ -48,7 +48,8 @@ void orbitAndHandoff() {
     director.update(8, visible);
     require(director.phase() == astana::SceneDirector::Phase::Finale, "Rise boundary");
     const auto high = director.pose();
-    require(high.position.y > low.position.y + 10, "Camera must rise");
+    require(high.position.y > low.position.y + 1.5f, "Camera must rise");
+    require(high.position.x < low.position.x - 3, "Camera must reveal the river from the western bank");
     director.update(5, visible);
     require(director.orbitEnabled() && handoffs == 1, "Finale must hand back orbit exactly once");
     samePose(high, director.pose(), "Handoff must preserve view");

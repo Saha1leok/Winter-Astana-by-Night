@@ -8,6 +8,7 @@ uniform vec3 uCameraPosition;
 uniform bool uIsIce;
 uniform bool uEmissive;
 uniform float uEmissionStrength;
+uniform float uSnowCoverage;
 
 const int MAX_LAMPS = 12;
 uniform int uLampCount;
@@ -43,36 +44,80 @@ float cellularCrack(vec2 point) {
             }
         }
     }
-    return 1.0 - smoothstep(0.012, 0.040, secondNearest - nearest);
+    return 1.0 - smoothstep(0.006, 0.024, secondNearest - nearest);
+}
+
+float materialNoise(vec3 point) {
+    vec3 cell = floor(point);
+    cell = fract(cell * 0.1031);
+    cell += dot(cell, cell.yzx + 33.33);
+    return fract((cell.x + cell.y) * cell.z);
 }
 
 void main() {
     vec3 normal = normalize(vWorldNormal);
+    vec3 viewDirection = normalize(uCameraPosition - vWorldPosition);
     vec3 lightDirection = normalize(vec3(-0.35, 1.0, 0.25));
     float diffuse = max(dot(normal, lightDirection), 0.0);
+    vec3 halfDirection = normalize(lightDirection + viewDirection);
+    float specular = pow(max(dot(normal, halfDirection), 0.0), 48.0);
     vec3 color = uEmissive
         ? mix(vec3(0.025, 0.045, 0.075) * (0.34 + 0.66 * diffuse), uBaseColor * 1.35, uEmissionStrength)
-        : uBaseColor * (0.34 + 0.66 * diffuse);
+        : uBaseColor * (0.31 + 0.72 * diffuse) + vec3(0.42, 0.48, 0.62) * specular * 0.38;
+
+    if (!uEmissive && !uIsIce) {
+        float grain = materialNoise(vWorldPosition * 2.2);
+        bool foliage = uBaseColor.g > uBaseColor.r * 1.7 && uBaseColor.g > uBaseColor.b * 1.25;
+        if (foliage) {
+            float needles = 0.86 + 0.14 * sin(vWorldPosition.y * 19.0 + vWorldPosition.x * 7.0);
+            color *= needles * mix(0.94, 1.06, grain);
+        } else if (abs(normal.y) < 0.45) {
+            // Subtle facade/stone variation prevents perfectly flat plastic walls.
+            float verticalBand = 0.96 + 0.04 * sin(vWorldPosition.y * 7.0);
+            color *= verticalBand * mix(0.97, 1.03, grain);
+        }
+
+        // Universal slope-based snow: every upward-facing surface receives
+        // coverage regardless of the object's original material or mesh.
+        float upward = smoothstep(0.28, 0.74, normal.y);
+        // A low-poly cone has steep geometric normals, while real fir branches
+        // inside that cone present many small upward-facing needles to the snow.
+        if (foliage) upward = max(upward, 0.78);
+        float accumulationPattern = 0.5 + 0.5 * sin(
+            vWorldPosition.x * 1.35 + vWorldPosition.z * 1.85 + vWorldPosition.y * 0.55);
+        float accumulationFront = smoothstep(
+            1.0 - uSnowCoverage, 1.15 - uSnowCoverage, accumulationPattern);
+        float snowMask = clamp(upward * mix(0.28, 1.0, accumulationFront) * uSnowCoverage, 0.0, 1.0);
+        if (foliage) snowMask = 0.0;
+        vec3 snowColor = vec3(0.90, 0.95, 1.04) * (0.62 + 0.38 * diffuse)
+            + vec3(0.42, 0.48, 0.60) * specular * 0.40;
+        color = mix(color, snowColor, snowMask * 0.98);
+    }
 
     if (uIsIce) {
         float mainCracks = cellularCrack(vWorldPosition.xz * 0.48);
         float smallCracks = cellularCrack(vWorldPosition.zx * 0.92 + vec2(3.2, 1.4)) * 0.18;
         float shimmer = 0.5 + 0.5 * sin(vWorldPosition.z * 0.8 + vWorldPosition.x * 1.7);
-        color += vec3(0.20, 0.28, 0.36) * max(mainCracks, smallCracks);
-        color += vec3(0.018, 0.035, 0.060) * shimmer;
-        vec3 viewDirection = normalize(uCameraPosition - vWorldPosition);
+        color += vec3(0.12, 0.17, 0.26) * max(mainCracks, smallCracks);
+        color += vec3(0.025, 0.055, 0.095) * shimmer;
         float fresnel = pow(1.0 - max(dot(normal, viewDirection), 0.0), 3.0);
         color += vec3(0.08, 0.16, 0.22) * fresnel;
     }
 
-    // Local diffuse light; no shadow maps or occlusion.
+    // Toggleable local Blinn-Phong lamps: diffuse and specular with attenuation.
     if (!uEmissive) {
         for (int i = 0; i < uLampCount; ++i) {
             vec3 toLight = uLampPositions[i] - vWorldPosition;
             float d = length(toLight);
             float attenuation = (1.0 - smoothstep(2.0, 4.2, d)) / (1.0 + 0.35*d + 0.40*d*d);
-            float lambert = max(dot(normal, toLight / max(d, 0.001)), 0.0);
-            color += uBaseColor * vec3(1.0, 0.62, 0.24) * 2.8 * lambert * attenuation * uLampStrengths[i];
+            vec3 localDirection = toLight / max(d, 0.001);
+            float lambert = max(dot(normal, localDirection), 0.0);
+            vec3 localHalf = normalize(localDirection + viewDirection);
+            float localSpecular = pow(max(dot(normal, localHalf), 0.0), 56.0);
+            vec3 warmLight = vec3(1.0, 0.62, 0.24);
+            color += (uBaseColor * warmLight * 3.35 * lambert
+                    + warmLight * 1.15 * localSpecular)
+                   * attenuation * uLampStrengths[i];
         }
     }
 

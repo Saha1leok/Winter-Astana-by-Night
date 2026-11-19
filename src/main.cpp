@@ -12,6 +12,7 @@
 #include "FrameCapture.h"
 #include "SceneDirector.h"
 #include "FireworkRenderer.h"
+#include "SceneNode.h"
 
 #include <algorithm>
 #include <array>
@@ -80,6 +81,11 @@ struct SnowParticle {
 
 astana::SceneDirector* activeDirector = nullptr;
 lighting::State lightState;
+bool showGarlands = true;
+bool showKhanShatyrLighting = true;
+bool showBayterekLighting = true;
+bool showAkOrdaLighting = true;
+float landmarkBrightness = 0.65f;
 bool dragging = false;
 double previousMouseX = 0.0;
 double previousMouseY = 0.0;
@@ -89,6 +95,14 @@ void keyCallback(GLFWwindow*, int key, int, int action, int) {
     if (key == GLFW_KEY_1) lightState.windows = !lightState.windows;
     if (key == GLFW_KEY_2) lightState.lamps = !lightState.lamps;
     if (key == GLFW_KEY_L) lightState.toggleAll();
+    if (key == GLFW_KEY_G) showGarlands = !showGarlands;
+    if (key == GLFW_KEY_H) showKhanShatyrLighting = !showKhanShatyrLighting;
+    if (key == GLFW_KEY_B) showBayterekLighting = !showBayterekLighting;
+    if (key == GLFW_KEY_K) showAkOrdaLighting = !showAkOrdaLighting;
+    if (key == GLFW_KEY_MINUS || key == GLFW_KEY_KP_SUBTRACT)
+        landmarkBrightness = std::clamp(landmarkBrightness - 0.10f, 0.20f, 1.0f);
+    if (key == GLFW_KEY_EQUAL || key == GLFW_KEY_KP_ADD)
+        landmarkBrightness = std::clamp(landmarkBrightness + 0.10f, 0.20f, 1.0f);
     if (!activeDirector) return;
     if (key == GLFW_KEY_R || key == GLFW_KEY_SPACE) {
         dragging = false;
@@ -156,7 +170,10 @@ float riverCenter(float z) {
 }
 
 float riverHalfWidth(float z) {
-    return 1.55f + 0.10f * std::cos((z + 2.0f) * 0.22f);
+    // The river opens toward the camera, matching the broad frozen foreground
+    // in the visual reference while remaining narrower behind the skyline.
+    const float foreground = 0.5f + 0.5f * std::tanh((z - 1.0f) * 0.20f);
+    return 1.72f + 2.45f * foreground + 0.10f * std::cos((z + 2.0f) * 0.22f);
 }
 
 float snowHeight(float x, float z) {
@@ -167,10 +184,10 @@ float snowHeight(float x, float z) {
         return height * std::exp(-(dx * dx + dz * dz) / (radius * radius));
     };
     return base
-        + mound(-8.0f, 7.0f, 1.65f, 3.0f)
-        + mound(-4.3f, 9.0f, 0.95f, 2.3f)
-        + mound(-9.5f, 1.0f, 0.65f, 2.8f)
-        + mound(9.2f, 5.5f, 0.65f, 3.2f);
+        + mound(-8.0f, 7.0f, 0.72f, 3.0f)
+        + mound(-4.3f, 9.0f, 0.46f, 2.3f)
+        + mound(-9.5f, 1.0f, 0.42f, 2.8f)
+        + mound(9.2f, 5.5f, 0.42f, 3.2f);
 }
 
 void addSurfaceVertex(std::vector<float>& vertices, float x, float y, float z) {
@@ -189,9 +206,9 @@ void addSnowVertex(std::vector<float>& vertices, float x, float z) {
 SurfaceData createSnowBank(bool leftBank) {
     constexpr int segments = 48;
     constexpr int columns = 9;
-    constexpr float minimumZ = -12.0f;
-    constexpr float maximumZ = 12.0f;
-    constexpr float outerEdge = 13.5f;
+    constexpr float minimumZ = -16.0f;
+    constexpr float maximumZ = 19.0f;
+    constexpr float outerEdge = 19.0f;
     SurfaceData surface;
     surface.vertices.reserve((segments + 1) * (columns + 1) * 6);
     surface.indices.reserve(segments * columns * 6);
@@ -224,8 +241,8 @@ SurfaceData createSnowBank(bool leftBank) {
 
 SurfaceData createRiver() {
     constexpr int segments = 48;
-    constexpr float minimumZ = -12.0f;
-    constexpr float maximumZ = 12.0f;
+    constexpr float minimumZ = -16.0f;
+    constexpr float maximumZ = 19.0f;
     SurfaceData surface;
     surface.vertices.reserve((segments + 1) * 12);
     surface.indices.reserve(segments * 6);
@@ -251,8 +268,8 @@ SurfaceData createRiver() {
 
 SurfaceData createBankWall(bool leftBank) {
     constexpr int segments = 48;
-    constexpr float minimumZ = -12.0f;
-    constexpr float maximumZ = 12.0f;
+    constexpr float minimumZ = -16.0f;
+    constexpr float maximumZ = 19.0f;
     SurfaceData surface;
     surface.vertices.reserve((segments + 1) * 12);
     surface.indices.reserve(segments * 12);
@@ -364,12 +381,18 @@ SurfaceData radialMesh(const std::vector<glm::vec2>& profile, int sides = 16) {
     SurfaceData result;
     constexpr float twoPi = 6.28318530718f;
     for (std::size_t ring = 0; ring < profile.size(); ++ring) {
+        const std::size_t previous = ring == 0 ? ring : ring - 1;
+        const std::size_t next = std::min(ring + 1, profile.size() - 1);
+        const float heightDelta = profile[next].x - profile[previous].x;
+        const float radiusDelta = profile[next].y - profile[previous].y;
+        const glm::vec2 profileNormal = glm::normalize(glm::vec2(heightDelta, -radiusDelta));
         for (int j = 0; j <= sides; ++j) {
             const float a = twoPi * static_cast<float>(j) / static_cast<float>(sides);
             const float c = std::cos(a), si = std::sin(a);
             const float radius = profile[ring].y;
             result.vertices.insert(result.vertices.end(), {
-                radius*c, profile[ring].x, radius*si, c, 0.25f, si
+                radius*c, profile[ring].x, radius*si,
+                profileNormal.x*c, profileNormal.y, profileNormal.x*si
             });
         }
     }
@@ -383,11 +406,6 @@ SurfaceData radialMesh(const std::vector<glm::vec2>& profile, int sides = 16) {
     return result;
 }
 
-void drawRadial(const Mesh& mesh, unsigned int program, const glm::vec3& location,
-                const glm::vec3& color, bool emissive = false) {
-    drawObject(mesh,program,glm::translate(glm::mat4(1.0f),location),color,false,emissive);
-}
-
 // Road tiles sit above the terrain but away from the river. Keep clear spaces
 // around the three monuments so the wide camera reveal remains readable.
 void drawRoadTile(const Mesh& cube, unsigned int program, float x, float z,
@@ -398,7 +416,7 @@ void drawRoadTile(const Mesh& cube, unsigned int program, float x, float z,
 
 void drawCityRoads(const Mesh& cube, unsigned int program) {
     // Curved left embankment promenade with simple railings.
-    for (float z=-11.2f; z<=10.4f; z+=0.75f) {
+    for (float z=-15.2f; z<=18.2f; z+=0.75f) {
         const float edge = riverCenter(z) - riverHalfWidth(z);
         const float x = edge - 1.35f;
         const float y = snowHeight(x, z) + 0.08f;
@@ -435,6 +453,21 @@ void drawCityRoads(const Mesh& cube, unsigned int program) {
     cityBox(cube, program, {bc, 0.62f, bz + 0.55f}, {span * 2.1f, 0.08f, 0.10f}, {0.82f, 0.84f, 0.89f});
     cityBox(cube, program, {bc - span * 0.55f, 0.17f, bz}, {0.58f, 0.34f, 0.94f}, {0.43f, 0.45f, 0.54f});
     cityBox(cube, program, {bc + span * 0.55f, 0.17f, bz}, {0.58f, 0.34f, 0.94f}, {0.43f, 0.45f, 0.54f});
+    const glm::vec3 bridgeMetal{0.11f, 0.13f, 0.18f};
+    for (float x = bc - span; x <= bc + span; x += 0.52f) {
+        for (float side : {-0.58f, 0.58f})
+            cityBox(cube, program, {x, 0.78f, bz + side}, {0.055f, 0.42f, 0.055f}, bridgeMetal);
+    }
+    for (float side : {-0.58f, 0.58f}) {
+        cityBox(cube, program, {bc, 0.90f, bz + side}, {span * 2.08f, 0.055f, 0.055f}, bridgeMetal);
+        cityBox(cube, program, {bc, 0.72f, bz + side}, {span * 2.08f, 0.035f, 0.035f}, bridgeMetal);
+    }
+    // Faceted braces suggest the two shallow arches visible under the bridge.
+    for (float direction : {-1.0f, 1.0f}) {
+        const glm::vec3 pier{bc + direction * span * 0.55f, 0.12f, bz};
+        cityBeam(cube, program, pier, {bc + direction * span * 0.12f, 0.34f, bz}, 0.11f, {0.35f, 0.37f, 0.45f});
+        cityBeam(cube, program, pier, {bc + direction * span * 0.96f, 0.34f, bz}, 0.11f, {0.35f, 0.37f, 0.45f});
+    }
 }
 
 void drawDetailedBuilding(const Mesh& cube, unsigned int program, const CityBuilding& b) {
@@ -478,33 +511,142 @@ void drawDetailedBuilding(const Mesh& cube, unsigned int program, const CityBuil
     }
 }
 
-void drawFirTree(const Mesh& cube, const Mesh& roof, unsigned int program, float x, float z, float scale = 1.0f) {
+void drawFirTree(const Mesh& cube, const Mesh& crown, const Mesh& snowCap,
+                 unsigned int program, float x, float z, float scale, float snowCoverage) {
     const float y = snowHeight(x, z);
-    cityBox(cube, program, {x, y + 0.28f * scale, z}, {0.18f * scale, 0.56f * scale, 0.18f * scale}, {0.25f, 0.18f, 0.10f});
-    drawObject(roof, program, glm::translate(glm::mat4(1.0f), {x, y + 1.10f * scale, z}) * glm::scale(glm::mat4(1.0f), {0.38f * scale, 0.52f * scale, 0.38f * scale}), {0.10f, 0.22f, 0.14f}, false);
-    drawObject(roof, program, glm::translate(glm::mat4(1.0f), {x, y + 0.78f * scale, z}) * glm::scale(glm::mat4(1.0f), {0.54f * scale, 0.50f * scale, 0.54f * scale}), {0.12f, 0.24f, 0.16f}, false);
-    drawObject(roof, program, glm::translate(glm::mat4(1.0f), {x, y + 0.48f * scale, z}) * glm::scale(glm::mat4(1.0f), {0.70f * scale, 0.46f * scale, 0.70f * scale}), {0.12f, 0.26f, 0.18f}, false);
-    cityBox(cube, program, {x, y + 1.26f * scale, z}, {0.18f * scale, 0.08f * scale, 0.18f * scale}, {0.92f, 0.95f, 1.0f});
-    cityBox(cube, program, {x, y + 0.92f * scale, z}, {0.32f * scale, 0.10f * scale, 0.32f * scale}, {0.92f, 0.95f, 1.0f});
-    cityBox(cube, program, {x, y + 0.60f * scale, z}, {0.46f * scale, 0.10f * scale, 0.46f * scale}, {0.92f, 0.95f, 1.0f});
+    cityBox(cube, program, {x, y + 0.52f * scale, z}, {0.20f * scale, 1.04f * scale, 0.20f * scale}, {0.24f, 0.16f, 0.09f});
+    const glm::vec3 foliage{0.055f, 0.19f, 0.115f};
+    auto cone = [&](float baseY, float radius, float height, const glm::vec3& color) {
+        drawObject(crown, program,
+            glm::translate(glm::mat4(1.0f), {x, y + baseY * scale, z})
+                * glm::scale(glm::mat4(1.0f), {radius * scale, height * scale, radius * scale}),
+            color, false);
+    };
+    // Three separate branch cones form a recognizable fir, not a scaled Khan Shatyr.
+    cone(0.28f, 1.00f, 1.55f, foliage);
+    cone(1.03f, 0.78f, 1.48f, foliage * 1.08f);
+    cone(1.78f, 0.55f, 1.42f, foliage * 1.16f);
+
+    // Separate snow geometry grows over the branches; foliage never changes color.
+    const float phase = 0.5f + 0.5f * std::sin(x * 1.71f + z * 1.29f);
+    float localCoverage = std::clamp(snowCoverage * 1.35f - phase * 0.35f, 0.0f, 1.0f);
+    localCoverage = localCoverage * localCoverage * (3.0f - 2.0f * localCoverage);
+    if (localCoverage > 0.01f) {
+        const glm::vec3 snow{0.88f, 0.93f, 1.0f};
+        auto cap = [&](float baseY, float radius, float height) {
+            const float spread = 0.22f + 0.78f * localCoverage;
+            drawObject(snowCap, program,
+                glm::translate(glm::mat4(1.0f), {x, y + baseY * scale, z})
+                    * glm::scale(glm::mat4(1.0f), {
+                        radius * scale * spread,
+                        height * scale * std::max(localCoverage, 0.08f),
+                        radius * scale * spread}),
+                snow, false);
+        };
+        cap(1.04f, 0.82f, 0.48f);
+        cap(1.77f, 0.62f, 0.44f);
+        cap(2.47f, 0.43f, 0.40f);
+    }
 }
 
-void drawParkTrees(const Mesh& cube, const Mesh& roof, unsigned int program) {
-    const std::vector<glm::vec3> trees{{
-        {-12.6f,0, 0.6f}, {-11.2f,0, 1.6f}, {-9.6f,0, 2.8f}, {-8.1f,0, 1.2f},
-        {-7.0f,0, 4.0f}, {-5.8f,0, 0.9f}, {-4.6f,0, -0.6f},
-        { 7.6f,0, 2.0f}, { 8.7f,0, 3.8f}, {10.0f,0, 2.4f}, {11.5f,0, 1.6f}, {12.5f,0, 3.1f}
+struct ParkFir { float x; float z; float scale; int blockId; };
+
+const std::array<ParkFir, 12>& parkFirs() {
+    static const std::array<ParkFir, 12> trees{{
+        // These positions are shared by the tree meshes and their garlands.
+        {-13.8f, 3.8f, 0.92f, 2}, {-12.3f, 5.5f, 0.78f, 2},
+        {-10.5f, 4.7f, 0.84f, 2}, { -8.1f, 4.6f, 0.76f, 2},
+        { -6.4f, 4.1f, 0.88f, 2}, { -5.2f, 2.9f, 0.72f, 2},
+        { -4.2f, 4.7f, 0.78f, 2}, {  7.0f, 4.8f, 0.72f, 4},
+        {  8.6f, 5.8f, 0.78f, 4}, { 10.4f, 5.2f, 0.84f, 4},
+        { 12.4f, 5.9f, 0.76f, 4}, { 14.4f, 4.6f, 0.70f, 4}
     }};
-    const std::array<float, 12> scales{{1.15f,0.95f,1.05f,0.9f,1.15f,0.85f,0.95f,0.85f,0.95f,1.05f,0.9f,0.82f}};
-    for (std::size_t i=0;i<trees.size();++i) drawFirTree(cube, roof, program, trees[i].x, trees[i].z, scales[i]);
+    return trees;
 }
 
-void drawKhanShatyr(const Mesh& cube,const Mesh& roof,unsigned int program) {
-    const float x=-10.7f,z=1.8f,y=snowHeight(x,z);
+void drawParkTrees(const Mesh& cube, const Mesh& crown, const Mesh& snowCap,
+                   unsigned int program, float snowCoverage) {
+    for (const auto& tree : parkFirs())
+        drawFirTree(cube, crown, snowCap, program, tree.x, tree.z, tree.scale, snowCoverage);
+}
+
+void drawBench(const Mesh& cube, unsigned int program, float x, float z) {
+    const float y = snowHeight(x, z);
+    const glm::vec3 wood{0.31f, 0.18f, 0.10f};
+    const glm::vec3 metal{0.055f, 0.065f, 0.08f};
+    cityBox(cube, program, {x, y + 0.40f, z}, {0.48f, 0.10f, 1.18f}, wood);
+    cityBox(cube, program, {x - 0.19f, y + 0.70f, z}, {0.10f, 0.52f, 1.18f}, wood);
+    for (float dz : {-0.42f, 0.42f}) {
+        cityBox(cube, program, {x - 0.12f, y + 0.20f, z + dz}, {0.10f, 0.42f, 0.10f}, metal);
+        cityBox(cube, program, {x + 0.12f, y + 0.20f, z + dz}, {0.10f, 0.42f, 0.10f}, metal);
+    }
+}
+
+void drawPerson(const Mesh& cube, const Mesh& head, unsigned int program,
+                const glm::vec3& position, const glm::vec3& coat) {
+    const float y = snowHeight(position.x, position.z);
+    const glm::vec3 dark{0.045f, 0.055f, 0.075f};
+    cityBox(cube, program, {position.x, y + 0.78f, position.z}, {0.32f, 0.72f, 0.25f}, coat);
+    cityBox(cube, program, {position.x - 0.10f, y + 0.26f, position.z}, {0.10f, 0.52f, 0.12f}, dark);
+    cityBox(cube, program, {position.x + 0.10f, y + 0.26f, position.z}, {0.10f, 0.52f, 0.12f}, dark);
+    drawObject(head, program,
+        glm::translate(glm::mat4(1.0f), {position.x, y + 1.27f, position.z})
+            * glm::scale(glm::mat4(1.0f), glm::vec3(0.15f)),
+        {0.76f, 0.58f, 0.46f}, false);
+    cityBox(cube, program, {position.x, y + 1.43f, position.z}, {0.24f, 0.10f, 0.24f}, dark);
+}
+
+void drawStreetFurniture(const Mesh& cube, const Mesh& head, unsigned int program) {
+    for (float z : {-4.8f, 0.2f, 5.2f}) {
+        const float edge = riverCenter(z) - riverHalfWidth(z);
+        drawBench(cube, program, edge - 1.82f, z);
+    }
+    drawPerson(cube, head, program, {-2.4f, 0.0f, 1.8f}, {0.50f, 0.16f, 0.18f});
+    drawPerson(cube, head, program, {-1.8f, 0.0f, 2.2f}, {0.16f, 0.30f, 0.52f});
+    drawPerson(cube, head, program, { 5.8f, 0.0f, 5.8f}, {0.42f, 0.25f, 0.52f});
+    drawPerson(cube, head, program, { 6.3f, 0.0f, 6.1f}, {0.18f, 0.42f, 0.35f});
+}
+
+void landmarkObject(const Mesh& mesh, unsigned int program, const glm::mat4& model,
+                    const glm::vec3& unlit, const glm::vec3& lit,
+                    float intensity, float strength = 1.8f, float emissionBase = 1.0f) {
+    const float t = std::clamp(intensity, 0.0f, 1.0f);
+    const float glow = t * landmarkBrightness;
+    drawObject(mesh, program, model, glm::mix(unlit, lit, glow), false,
+               t > 0.015f, emissionBase + glow * (strength - emissionBase));
+}
+
+void landmarkBox(const Mesh& cube, unsigned int program,
+                 const glm::vec3& center, const glm::vec3& size,
+                 const glm::vec3& unlit, const glm::vec3& lit,
+                 float intensity, float strength = 1.8f, float emissionBase = 1.0f) {
+    landmarkObject(cube, program,
+        glm::translate(glm::mat4(1.0f), center) * glm::scale(glm::mat4(1.0f), size),
+        unlit, lit, intensity, strength, emissionBase);
+}
+
+void landmarkBeam(const Mesh& cube, unsigned int program,
+                  const glm::vec3& from, const glm::vec3& to, float width,
+                  const glm::vec3& unlit, const glm::vec3& lit,
+                  float intensity, float strength = 1.7f, float emissionBase = 1.0f) {
+    const glm::vec3 direction = to - from;
+    const float length = glm::length(direction);
+    if (length < 0.001f) return;
+    const glm::quat rotation = glm::rotation(glm::vec3(0, 1, 0), direction / length);
+    landmarkObject(cube, program,
+        glm::translate(glm::mat4(1.0f), (from + to) * 0.5f)
+            * glm::mat4_cast(rotation)
+            * glm::scale(glm::mat4(1.0f), glm::vec3(width, length, width)),
+        unlit, lit, intensity, strength, emissionBase);
+}
+
+void drawKhanShatyr(const Mesh& cube,const Mesh& roof,unsigned int program,float light) {
+    const float x=-9.35f,z=0.2f,y=snowHeight(x,z);
     const glm::vec3 pearl={0.73f,0.77f,0.92f};
     cityBox(cube,program,{x,y+0.23f,z},{4.65f,0.45f,4.30f},{0.50f,0.52f,0.70f});
     cityBox(cube,program,{x,y+0.49f,z},{4.86f,0.10f,4.55f},{0.81f,0.83f,0.92f});
-    drawRadial(roof,program,{x,y+0.51f,z},{0.44f,0.37f,0.75f});
+    landmarkObject(roof, program, glm::translate(glm::mat4(1.0f), {x,y+0.51f,z}),
+                   {0.24f,0.23f,0.38f}, {0.70f,0.36f,0.94f}, light, 1.8f);
     // Visible tent ribs converge at the high crown, rather than a plain cone.
     constexpr float pi=3.14159265358979f;
     for(int i=0;i<16;i++) {
@@ -512,81 +654,230 @@ void drawKhanShatyr(const Mesh& cube,const Mesh& roof,unsigned int program) {
         const glm::vec3 foot={x+2.25f*std::cos(angle),y+0.55f,z+2.25f*std::sin(angle)};
         const glm::vec3 waist={x+1.16f*std::cos(angle),y+1.55f,z+1.16f*std::sin(angle)};
         const glm::vec3 top={x+0.10f*std::cos(angle),y+4.9f,z+0.10f*std::sin(angle)};
-        cityBeam(cube,program,foot,waist,0.065f,pearl);
-        cityBeam(cube,program,waist,top,0.052f,pearl);
+        landmarkBeam(cube,program,foot,waist,0.065f,pearl,{0.91f,0.80f,1.0f},light,1.4f);
+        landmarkBeam(cube,program,waist,top,0.052f,pearl,{0.91f,0.80f,1.0f},light,1.4f);
     }
-    cityBeam(cube,program,{x,y+4.66f,z},{x,y+6.16f,z},0.075f,{0.89f,0.91f,0.99f});
+    const glm::vec3 darkEdge{0.28f,0.33f,0.48f};
+    const glm::vec3 blue{0.28f,0.62f,1.0f};
+    landmarkBox(cube,program,{x,y+0.57f,z-2.29f},{4.80f,0.045f,0.07f},darkEdge,blue,light,1.7f);
+    landmarkBox(cube,program,{x,y+0.57f,z+2.29f},{4.80f,0.045f,0.07f},darkEdge,blue,light,1.7f);
+    landmarkBox(cube,program,{x-2.46f,y+0.57f,z},{0.07f,0.045f,4.48f},darkEdge,blue,light,1.7f);
+    landmarkBox(cube,program,{x+2.46f,y+0.57f,z},{0.07f,0.045f,4.48f},darkEdge,blue,light,1.7f);
+    landmarkBeam(cube,program,{x,y+4.66f,z},{x,y+6.16f,z},0.075f,
+                 {0.89f,0.91f,0.99f},{0.98f,0.95f,1.0f},light,1.5f);
     cityBox(cube,program,{x,y+0.85f,z-2.21f},{1.65f,0.83f,0.09f},{0.22f,0.29f,0.46f});
 }
 
-void drawBayterek(const Mesh& cube,const Mesh& globe,unsigned int program) {
+void drawBayterek(const Mesh& cube,const Mesh& globe,unsigned int program,float light) {
     const float x=0.2f,z=0.8f,y=snowHeight(x,z)+0.17f;
-    const glm::vec3 white={0.87f,0.85f,0.78f};
+    const float softLight = light * 0.72f;
+    const glm::vec3 white={0.78f,0.77f,0.72f};
     const glm::vec3 gold={0.86f,0.70f,0.36f};
     cityBox(cube,program,{x,y+0.14f,z},{2.75f,0.28f,2.75f},{0.73f,0.78f,0.87f});
     cityBox(cube,program,{x,y+0.36f,z},{1.95f,0.18f,1.95f},{0.91f,0.91f,0.90f});
-    cityBox(cube,program,{x,y+2.58f,z},{0.50f,4.45f,0.50f},white);
+    landmarkBox(cube,program,{x,y+3.35f,z},{0.54f,5.95f,0.54f},
+                white,{0.94f,0.90f,0.76f},softLight,1.18f,0.38f);
     // Eight outward-curving columns forming a basket around the sphere.
     constexpr float pi=3.14159265358979f;
-    for(int i=0;i<8;i++) {
-        const float a=2*pi*i/8;
+    for(int i=0;i<12;i++) {
+        const float a=2*pi*i/12;
         const glm::vec3 unit={std::cos(a),0,std::sin(a)};
         const glm::vec3 bottom=glm::vec3(x,y+0.45f,z)+unit*0.44f;
-        const glm::vec3 middle=glm::vec3(x,y+3.25f,z)+unit*0.77f;
-        const glm::vec3 upper=glm::vec3(x,y+5.05f,z)+unit*1.12f;
-        const glm::vec3 tip=glm::vec3(x,y+6.25f,z)+unit*1.48f;
-        cityBeam(cube,program,bottom,middle,0.105f,white);
-        cityBeam(cube,program,middle,upper,0.082f,white);
-        cityBeam(cube,program,upper,tip,0.066f,gold);
+        const glm::vec3 middle=glm::vec3(x,y+4.15f,z)+unit*0.82f;
+        const glm::vec3 upper=glm::vec3(x,y+6.15f,z)+unit*1.20f;
+        const glm::vec3 tip=glm::vec3(x,y+7.65f,z)+unit*1.55f;
+        landmarkBeam(cube,program,bottom,middle,0.105f,white,{0.94f,0.90f,0.76f},softLight,1.18f,0.34f);
+        landmarkBeam(cube,program,middle,upper,0.082f,white,{0.94f,0.90f,0.76f},softLight,1.22f,0.34f);
+        landmarkBeam(cube,program,upper,tip,0.066f,gold,{0.98f,0.80f,0.41f},softLight,1.38f,0.38f);
     }
-    drawRadial(globe,program,{x,y+5.62f,z},{0.94f,0.65f,0.20f},true);
-    cityBox(cube,program,{x,y+4.35f,z},{1.17f,0.15f,1.17f},gold);
-    for(float level:{1.05f,2.35f,3.65f}) {
+    // Three polygonal basket rings make the crown read as a constructed landmark.
+    for (float level : {5.35f, 6.25f, 7.15f}) {
+        const float radius = 0.95f + (level - 5.35f) * 0.27f;
+        for (int i = 0; i < 12; ++i) {
+            const float a = 2*pi*i/12;
+            const float b = 2*pi*(i+1)/12;
+            landmarkBeam(cube, program,
+                {x + radius*std::cos(a), y + level, z + radius*std::sin(a)},
+                {x + radius*std::cos(b), y + level, z + radius*std::sin(b)},
+                0.045f, white, {0.94f,0.86f,0.64f}, softLight, 1.18f, 0.34f);
+        }
+    }
+    landmarkObject(globe,program,
+        glm::translate(glm::mat4(1.0f),{x,y+7.05f,z})
+            * glm::scale(glm::mat4(1.0f),glm::vec3(1.12f)),
+        {0.42f,0.33f,0.20f},{0.96f,0.72f,0.27f},softLight,1.55f,0.45f);
+    landmarkBox(cube,program,{x,y+5.45f,z},{1.26f,0.16f,1.26f},
+                gold,{0.98f,0.82f,0.43f},softLight,1.28f,0.36f);
+    for(float level:{1.25f,2.85f,4.45f}) {
         cityBox(cube,program,{x,y+level,z},{1.08f,0.09f,1.08f},{0.77f,0.81f,0.85f});
     }
 }
 
-void drawAkOrda(const Mesh& cube,const Mesh& dome,unsigned int program) {
-    const float x=11.6f,z=1.9f,y=snowHeight(x,z);
+void drawAkOrda(const Mesh& cube,const Mesh& dome,unsigned int program,float light) {
+    const float x=10.45f,z=0.4f,y=snowHeight(x,z);
     const glm::vec3 wall={0.86f,0.87f,0.92f};
     const glm::vec3 snow={0.96f,0.94f,0.92f};
     const glm::vec3 trim={0.70f,0.75f,0.85f};
+    const glm::vec3 warm={1.0f,0.91f,0.70f};
+    const glm::vec3 gold={0.98f,0.79f,0.32f};
     cityBox(cube,program,{x,y+0.17f,z},{5.65f,0.34f,3.75f},trim);
     cityBox(cube,program,{x,y+1.05f,z},{5.35f,1.46f,3.15f},wall);
     cityBox(cube,program,{x,y+1.83f,z},{5.55f,0.16f,3.38f},snow);
     cityBox(cube,program,{x,y+2.28f,z},{4.6f,0.75f,2.56f},wall);
     cityBox(cube,program,{x,y+2.71f,z},{4.9f,0.14f,2.82f},snow);
     cityBox(cube,program,{x,y+3.02f,z},{2.00f,0.50f,1.85f},wall);
+    landmarkBox(cube,program,{x,y+1.84f,z-1.73f},{5.45f,0.065f,0.06f},trim,warm,light,1.55f);
+    landmarkBox(cube,program,{x,y+2.72f,z-1.44f},{4.80f,0.055f,0.06f},trim,warm,light,1.55f);
     // Monumental colonnaded portico facing the camera and the river.
     cityBox(cube,program,{x,y+1.38f,z-1.78f},{4.02f,0.15f,0.82f},snow);
     for(int i=-3;i<=3;i++) {
         const float cx=x+i*0.54f;
-        cityBox(cube,program,{cx,y+0.93f,z-1.84f},{0.135f,1.42f,0.14f},snow);
+        landmarkBox(cube,program,{cx,y+0.93f,z-1.84f},{0.135f,1.42f,0.14f},
+                    snow,warm,light,1.65f);
         cityBox(cube,program,{cx,y+1.66f,z-1.84f},{0.25f,0.12f,0.25f},trim);
         cityBox(cube,program,{cx,y+0.22f,z-1.84f},{0.24f,0.12f,0.23f},trim);
     }
     for(int i=-5;i<=5;i++) {
         const float wx=x+i*0.45f;
-        cityBox(cube,program,{wx,y+1.18f,z-1.592f},{0.19f,0.37f,0.035f},
-                {0.31f,0.43f,0.63f});
+        landmarkBox(cube,program,{wx,y+1.18f,z-1.592f},{0.19f,0.37f,0.035f},
+                    {0.31f,0.43f,0.63f},{0.97f,0.79f,0.46f},light,1.65f);
     }
     cityBox(cube,program,{x,y+0.59f,z-1.95f},{0.49f,0.95f,0.05f},
             {0.32f,0.42f,0.58f});
-    drawRadial(dome,program,{x,y+3.27f,z},{0.16f,0.46f,0.77f});
-    cityBeam(cube,program,{x,y+4.29f,z},{x,y+5.18f,z},0.105f,{0.98f,0.75f,0.30f});
-    cityBox(cube,program,{x,y+5.23f,z},{0.21f,0.17f,0.21f},{1.0f,0.82f,0.38f});
+    landmarkObject(dome,program,glm::translate(glm::mat4(1.0f),{x,y+3.27f,z}),
+                   {0.20f,0.30f,0.46f},{0.26f,0.58f,0.93f},light,1.65f);
+    landmarkBeam(cube,program,{x,y+4.29f,z},{x,y+5.18f,z},0.105f,
+                 {0.98f,0.75f,0.30f},gold,light,1.8f);
+    landmarkBox(cube,program,{x,y+5.23f,z},{0.21f,0.17f,0.21f},
+                {1.0f,0.82f,0.38f},gold,light,1.75f);
 }
 
 // Main Member 1 render entry point; no separate scene engine required.
-void drawCityLayout(const Mesh& cube,const Mesh& khanRoof,
+void drawCityLayout(const Mesh& cube,const Mesh& khanRoof,const Mesh& firCrown,const Mesh& firSnowCap,
                     const Mesh& bayterekGlobe,const Mesh& akOrdaDome,
-                    unsigned int program) {
+                    unsigned int program,float snowCoverage,
+                    const std::array<float,4>& blockLights) {
     drawCityRoads(cube,program);
     for(const CityBuilding& b:cityBuildings()) drawDetailedBuilding(cube,program,b);
-    drawParkTrees(cube,khanRoof,program);
-    drawKhanShatyr(cube,khanRoof,program);
-    drawBayterek(cube,bayterekGlobe,program);
-    drawAkOrda(cube,akOrdaDome,program);
+    drawParkTrees(cube,firCrown,firSnowCap,program,snowCoverage);
+    drawKhanShatyr(cube,khanRoof,program,showKhanShatyrLighting ? blockLights[1] : 0.0f);
+    drawBayterek(cube,bayterekGlobe,program,showBayterekLighting ? blockLights[1] : 0.0f);
+    drawAkOrda(cube,akOrdaDome,program,showAkOrdaLighting ? blockLights[3] : 0.0f);
+    drawStreetFurniture(cube,bayterekGlobe,program);
+}
+
+struct GarlandPart {
+    glm::vec3 from;
+    glm::vec3 to;
+    int blockId;
+    int bulbColor;
+    float phase;
+    bool isBulb;
+    float size = 1.0f;
+};
+
+const std::vector<GarlandPart>& holidayGarlands() {
+    static const std::vector<GarlandPart> parts = [] {
+        std::vector<GarlandPart> result;
+        result.reserve(1400);
+        int colorNumber = 0;
+        auto addString = [&](const glm::vec3& first, const glm::vec3& last,
+                             int blockId, int bulbs, float sag) {
+            glm::vec3 previous = first;
+            for (int i = 1; i <= bulbs + 1; ++i) {
+                const float t = static_cast<float>(i) / static_cast<float>(bulbs + 1);
+                glm::vec3 point = glm::mix(first, last, t);
+                point.y -= 4.0f * sag * t * (1.0f - t);
+                result.push_back({previous, point, blockId, 0, 0.0f, false});
+                if (i <= bulbs) {
+                    result.push_back({point, point, blockId, colorNumber % 5,
+                                      static_cast<float>(colorNumber) * 0.87f, true});
+                    ++colorNumber;
+                }
+                previous = point;
+            }
+        };
+
+        // Draped strings on the river promenade.
+        for (int i = 0; i < 10; ++i) {
+            const float z0 = -10.0f + 2.0f * i;
+            const float z1 = z0 + 2.0f;
+            const float x0 = riverCenter(z0) - riverHalfWidth(z0) - 0.58f;
+            const float x1 = riverCenter(z1) - riverHalfWidth(z1) - 0.58f;
+            addString({x0, snowHeight(x0,z0)+1.61f, z0},
+                      {x1, snowHeight(x1,z1)+1.61f, z1},
+                      z0 < -0.1f ? 1 : 2, 7, 0.20f);
+        }
+
+        // Two strings along the bridge railings.
+        const float bridgeX = riverCenter(4.6f);
+        for (float side : {-0.46f, 0.46f}) {
+            for (int i = -1; i < 1; ++i) {
+                addString({bridgeX + static_cast<float>(i)*1.55f, 1.52f, 4.6f+side},
+                          {bridgeX + static_cast<float>(i+1)*1.55f, 1.52f, 4.6f+side},
+                          4, 6, 0.17f);
+            }
+        }
+
+        // Roofline bulbs on the taller city blocks.
+        for (const auto& building : cityBuildings()) {
+            if (building.size.y < 4.0f) continue;
+            const float y = snowHeight(building.center.x, building.center.z)
+                + building.size.y + 0.21f;
+            const float z = building.center.z + building.size.z*0.5f + 0.14f;
+            const float dx = building.size.x*0.40f;
+            addString({building.center.x-dx,y,z},{building.center.x+dx,y,z},
+                      building.blockId,5,0.075f);
+        }
+
+        // Spiral strings follow the current fir geometry and current safe positions.
+        constexpr int treeBulbs = 28;
+        constexpr float twoPi = 6.28318530718f;
+        for (const auto& tree : parkFirs()) {
+            const float ground = snowHeight(tree.x,tree.z);
+            glm::vec3 previous{0.0f};
+            for (int i=0;i<treeBulbs;++i) {
+                const float t = static_cast<float>(i)/static_cast<float>(treeBulbs-1);
+                const float localHeight = 0.58f + 2.48f*t;
+                const float radius = 0.92f - 0.62f*t;
+                const float angle = 0.55f + twoPi*2.7f*t;
+                const glm::vec3 point{
+                    tree.x + tree.scale*(radius+0.10f)*std::cos(angle),
+                    ground + tree.scale*localHeight,
+                    tree.z + tree.scale*(radius+0.10f)*std::sin(angle)};
+                if (i>0) result.push_back({previous,point,tree.blockId,0,0.0f,false});
+                result.push_back({point,point,tree.blockId,colorNumber%5,
+                                  static_cast<float>(colorNumber)*0.87f,true,0.78f*tree.scale});
+                ++colorNumber;
+                previous=point;
+            }
+        }
+        return result;
+    }();
+    return parts;
+}
+
+void drawHolidayGarlands(const Mesh& cube, unsigned int program,
+                         const std::array<float,4>& blockLights,
+                         bool enabled, double seconds) {
+    const std::array<glm::vec3,5> palette{{
+        {1.00f,0.70f,0.27f}, {1.00f,0.92f,0.69f}, {0.37f,0.84f,1.00f},
+        {1.00f,0.54f,0.39f}, {0.77f,1.00f,0.73f}
+    }};
+    for (const auto& part : holidayGarlands()) {
+        if (!part.isBulb) {
+            cityBeam(cube,program,part.from,part.to,0.022f,{0.12f,0.16f,0.21f});
+            continue;
+        }
+        const float district = std::clamp(blockLights[static_cast<std::size_t>(part.blockId-1)],0.0f,1.0f);
+        const float glow = enabled ? district*(0.82f+0.18f*std::sin(static_cast<float>(seconds)*2.4f+part.phase)) : 0.0f;
+        const glm::mat4 model = glm::translate(glm::mat4(1.0f),part.from)
+            * glm::scale(glm::mat4(1.0f),glm::vec3(0.15f*part.size,0.18f*part.size,0.15f*part.size));
+        const bool lit = glow > 0.015f;
+        drawObject(cube,program,model,
+                   lit ? palette[static_cast<std::size_t>(part.bulbColor)] : glm::vec3(0.06f,0.07f,0.09f),
+                   false,lit,1.8f*glow);
+    }
 }
 
 }
@@ -611,7 +902,7 @@ int main(int argc, char** argv) {
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 #endif
 
-    GLFWwindow* window = glfwCreateWindow(initialWidth, initialHeight, "Winter Astana - Week 7", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(initialWidth, initialHeight, "Winter Astana by Night", nullptr, nullptr);
     if (!window) {
         std::cerr << "Window creation failed.\n";
         glfwTerminate();
@@ -659,7 +950,8 @@ int main(int argc, char** argv) {
         director.startReveal();
         if (smokeTest) std::filesystem::create_directories(captures);
         std::cout << "R: replay reveal | Space: skip | Drag: orbit | Wheel: zoom\n"
-                  << "1: windows | 2: lamps | L: all lights | Esc: exit\n";
+                  << "1: windows | 2: lamps | L: all lights | G: garlands\n"
+                  << "H: Khan Shatyr | B: Bayterek | K: Ak Orda | -/+: brightness | Esc: exit\n";
 
         const std::vector<unsigned int> cubeIndices{
              0, 1, 2, 2, 3, 0,  4, 5, 6, 6, 7, 4,  8, 9,10,10,11, 8,
@@ -678,9 +970,14 @@ int main(int argc, char** argv) {
         Mesh cube(cubeVertices(), cubeIndices);
         // Landmark roofs: original low-poly radial geometry.
         const SurfaceData khanData = radialMesh({{0.0f,2.25f},{1.1f,1.15f},{3.00f,0.48f},{4.40f,0.08f}},16);
+        const SurfaceData firData = radialMesh({{0.0f,1.0f},{1.0f,0.0f}},12);
+        const SurfaceData firSnowData = radialMesh({
+            {0.00f,1.00f},{0.10f,1.06f},{0.24f,0.72f},{0.48f,0.0f}},12);
         const SurfaceData globeData = radialMesh({{-0.95f,0.05f},{-0.82f,0.55f},{-0.50f,0.85f},{0.0f,1.0f},{0.50f,0.85f},{0.82f,0.55f},{0.95f,0.05f}},16);
         const SurfaceData domeData = radialMesh({{0.0f,1.05f},{0.24f,1.0f},{0.7f,0.78f},{1.0f,0.4f},{1.1f,0.04f}},16);
         Mesh khanRoof(khanData.vertices,khanData.indices);
+        Mesh firCrown(firData.vertices,firData.indices);
+        Mesh firSnowCap(firSnowData.vertices,firSnowData.indices);
         Mesh bayterekGlobe(globeData.vertices,globeData.indices);
         Mesh akOrdaDome(domeData.vertices,domeData.indices);
 
@@ -742,12 +1039,12 @@ int main(int argc, char** argv) {
         lampStrengths.reserve(lamps.size());
 
         std::mt19937 randomGenerator(7);
-        std::uniform_real_distribution<float> xDistribution(-13.0f, 13.0f);
+        std::uniform_real_distribution<float> xDistribution(-18.0f, 18.0f);
         std::uniform_real_distribution<float> yDistribution(0.5f, 12.0f);
-        std::uniform_real_distribution<float> zDistribution(-12.0f, 12.0f);
+        std::uniform_real_distribution<float> zDistribution(-16.0f, 19.0f);
         std::uniform_real_distribution<float> speedDistribution(0.8f, 2.2f);
         std::uniform_real_distribution<float> driftDistribution(0.4f, 1.4f);
-        std::vector<SnowParticle> snowParticles(650);
+        std::vector<SnowParticle> snowParticles(1100);
         std::vector<glm::vec3> snowPositions(snowParticles.size());
         for (SnowParticle& particle : snowParticles) {
             particle.position = {xDistribution(randomGenerator), yDistribution(randomGenerator), zDistribution(randomGenerator)};
@@ -769,6 +1066,8 @@ int main(int argc, char** argv) {
 
         double lastFpsUpdate = glfwGetTime();
         double previousFrameTime = lastFpsUpdate;
+        double previousDirectorElapsed = director.elapsed();
+        double snowAccumulationStart = -1.0;
         int frameCount = 0;
         int testFrame = 0;
 
@@ -785,7 +1084,7 @@ int main(int argc, char** argv) {
                 : std::max(0.0, currentFrameTime - previousFrameTime);
             const float deltaTime = static_cast<float>(std::min(frameDelta, 0.05));
             previousFrameTime = currentFrameTime;
-            const glm::mat4 projection = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 100.0f);
+            const glm::mat4 projection = glm::perspective(glm::radians(49.0f), aspect, 0.1f, 100.0f);
             const auto beforeUpdate = director.pose();
             const auto visibilityMatrix = projection * glm::lookAt(beforeUpdate.position, beforeUpdate.target, glm::vec3(0, 1, 0));
             std::array<bool, 4> visibleBlocks{};
@@ -793,6 +1092,12 @@ int main(int argc, char** argv) {
                 visibleBlocks[i] = astana::skylineVisible(visibilityMatrix, skylineProbes[i]);
             fireworks.update(frameDelta);
             director.update(frameDelta, visibleBlocks);
+            const double directorElapsed = director.elapsed();
+            if (directorElapsed + 0.0001 < previousDirectorElapsed)
+                snowAccumulationStart = -1.0; // Replay resets accumulated snow.
+            if (snowAccumulationStart < 0.0 && director.orbitEnabled() && fireworks.vertices().empty())
+                snowAccumulationStart = directorElapsed;
+            previousDirectorElapsed = directorElapsed;
             const auto camera = director.pose();
             const glm::vec3 cameraPosition = camera.position;
             const glm::mat4 view = glm::lookAt(cameraPosition, camera.target, glm::vec3(0, 1, 0));
@@ -803,6 +1108,9 @@ int main(int argc, char** argv) {
             setMatrix(shader.id(), "uView", view);
             setMatrix(shader.id(), "uProjection", projection);
             glUniform3fv(glGetUniformLocation(shader.id(), "uCameraPosition"), 1, glm::value_ptr(cameraPosition));
+            const float snowCoverage = snowAccumulationStart < 0.0 ? 0.0f
+                : std::clamp(static_cast<float>((directorElapsed - snowAccumulationStart) / 6.0), 0.0f, 1.0f);
+            glUniform1f(glGetUniformLocation(shader.id(), "uSnowCoverage"), snowCoverage);
             activeLamps.clear();
             lampStrengths.clear();
             for (const auto& grouped : lamps) {
@@ -820,7 +1128,7 @@ int main(int argc, char** argv) {
 
             drawObject(leftBank, shader.id(), glm::mat4(1.0f), {0.80f, 0.87f, 0.95f}, false);
             drawObject(rightBank, shader.id(), glm::mat4(1.0f), {0.80f, 0.87f, 0.95f}, false);
-            drawObject(river, shader.id(), glm::mat4(1.0f), {0.10f, 0.29f, 0.50f}, true);
+            drawObject(river, shader.id(), glm::mat4(1.0f), {0.055f, 0.16f, 0.34f}, true);
             drawObject(leftWall, shader.id(), glm::mat4(1.0f), {0.34f, 0.42f, 0.54f}, false);
             drawObject(rightWall, shader.id(), glm::mat4(1.0f), {0.34f, 0.42f, 0.54f}, false);
 
@@ -830,7 +1138,9 @@ int main(int argc, char** argv) {
             }
 
             // Updated composition: closer to the visual reference while keeping the same winter rendering pipeline.
-            drawCityLayout(cube,khanRoof,bayterekGlobe,akOrdaDome,shader.id());
+            drawCityLayout(cube,khanRoof,firCrown,firSnowCap,bayterekGlobe,akOrdaDome,
+                shader.id(),snowCoverage,blockLights);
+            drawHolidayGarlands(cube,shader.id(),blockLights,showGarlands,currentFrameTime);
 
             for (const auto& grouped : windows) {
                 const auto& pane = grouped.pane;
@@ -845,12 +1155,23 @@ int main(int argc, char** argv) {
                 const auto& lamp = grouped.lamp;
                 const float intensity = lightState.lamps ? blockLights[static_cast<std::size_t>(grouped.blockId - 1)] : 0.0f;
                 const float height = lamp.bulb.y - lamp.base.y;
-                const glm::mat4 postModel = glm::translate(glm::mat4(1.0f), lamp.base + glm::vec3(0, height * 0.47f, 0))
-                    * glm::scale(glm::mat4(1.0f), {0.10f, height * 0.94f, 0.10f});
+                const SceneNode lampRoot(glm::translate(glm::mat4(1.0f), lamp.base));
+                const SceneNode bulbNode(glm::translate(glm::mat4(1.0f), {0.0f, height, 0.0f}), &lampRoot);
+                const glm::mat4 postModel = lampRoot.worldTransform()
+                    * glm::translate(glm::mat4(1.0f), {0.0f, height * 0.47f, 0.0f})
+                    * glm::scale(glm::mat4(1.0f), {0.075f, height * 0.94f, 0.075f});
                 drawObject(cube, shader.id(), postModel, {0.055f, 0.065f, 0.085f}, false);
-                const glm::mat4 bulbModel = glm::translate(glm::mat4(1.0f), lamp.bulb)
-                    * glm::scale(glm::mat4(1.0f), {0.28f, 0.24f, 0.28f});
-                drawObject(cube, shader.id(), bulbModel, intensity > 0.0f ? glm::vec3(1.0f, 0.70f, 0.28f) : glm::vec3(0.08f),
+                drawObject(cube, shader.id(), lampRoot.worldTransform()
+                    * glm::translate(glm::mat4(1.0f), {0.0f, 0.08f, 0.0f})
+                    * glm::scale(glm::mat4(1.0f), {0.22f, 0.16f, 0.22f}),
+                    {0.045f, 0.055f, 0.075f}, false);
+                drawObject(cube, shader.id(), bulbNode.worldTransform()
+                    * glm::translate(glm::mat4(1.0f), {0.0f, 0.20f, 0.0f})
+                    * glm::scale(glm::mat4(1.0f), {0.25f, 0.10f, 0.25f}),
+                    {0.045f, 0.055f, 0.075f}, false);
+                const glm::mat4 bulbModel = bulbNode.worldTransform()
+                    * glm::scale(glm::mat4(1.0f), {0.23f, 0.27f, 0.23f});
+                drawObject(bayterekGlobe, shader.id(), bulbModel, intensity > 0.0f ? glm::vec3(1.0f, 0.70f, 0.28f) : glm::vec3(0.08f),
                     false, intensity > 0.0f, intensity);
             }
 
@@ -881,7 +1202,7 @@ int main(int argc, char** argv) {
 
             fireworkRenderer.draw(fireworks, view, projection);
             if (smokeTest) {
-                const std::array<int, 5> frames{{0, 240, 420, 660, 900}};
+                const std::array<int, 5> frames{{0, 240, 420, 660, 1260}};
                 const std::array<const char*, 5> names{{"start.bmp", "block-one.bmp", "skyline-rise.bmp", "fireworks.bmp", "orbit-restored.bmp"}};
                 for (std::size_t i = 0; i < frames.size(); ++i) {
                     if (testFrame == frames[i]) {
@@ -891,7 +1212,7 @@ int main(int argc, char** argv) {
                 }
                 if (testFrame == 660 && fireworks.vertices().empty())
                     throw std::runtime_error("Finale did not render firework particles");
-                if (testFrame == 900) {
+                if (testFrame == 1260) {
                     if (!director.orbitEnabled()) throw std::runtime_error("Orbit control was not restored");
                     for (float light : blockLights) if (light < 0.99f) throw std::runtime_error("Block was not revealed");
                     keyCallback(window, GLFW_KEY_R, 0, GLFW_REPEAT, 0);
@@ -908,6 +1229,15 @@ int main(int argc, char** argv) {
                     if (lightState.windows || lightState.lamps) throw std::runtime_error("Lighting toggles failed");
                     keyCallback(window, GLFW_KEY_L, 0, GLFW_PRESS, 0);
                     if (!lightState.windows || !lightState.lamps) throw std::runtime_error("All-light toggle failed");
+                    keyCallback(window, GLFW_KEY_G, 0, GLFW_PRESS, 0);
+                    keyCallback(window, GLFW_KEY_H, 0, GLFW_PRESS, 0);
+                    keyCallback(window, GLFW_KEY_B, 0, GLFW_PRESS, 0);
+                    keyCallback(window, GLFW_KEY_K, 0, GLFW_PRESS, 0);
+                    if (showGarlands || showKhanShatyrLighting || showBayterekLighting || showAkOrdaLighting)
+                        throw std::runtime_error("Garland/landmark lighting toggles failed");
+                    const float brightnessBefore = landmarkBrightness;
+                    keyCallback(window, GLFW_KEY_EQUAL, 0, GLFW_PRESS, 0);
+                    if (landmarkBrightness <= brightnessBefore) throw std::runtime_error("Landmark brightness control failed");
                     keyCallback(window, GLFW_KEY_R, 0, GLFW_PRESS, 0);
                     if (director.orbitEnabled() || !fireworks.vertices().empty()) throw std::runtime_error("Replay did not reset");
                     keyCallback(window, GLFW_KEY_SPACE, 0, GLFW_PRESS, 0);
@@ -930,6 +1260,12 @@ int main(int argc, char** argv) {
                 title << "Winter Astana | " << director.phaseName() << " | R Replay | Space Skip"
                       << " | 1 Windows " << (lightState.windows ? "ON" : "OFF")
                       << " | 2 Lamps " << (lightState.lamps ? "ON" : "OFF")
+                      << " | G Garlands " << (showGarlands ? "ON" : "OFF")
+                      << " | H Khan " << (showKhanShatyrLighting ? "ON" : "OFF")
+                      << " | B Bayterek " << (showBayterekLighting ? "ON" : "OFF")
+                      << " | K AkOrda " << (showAkOrdaLighting ? "ON" : "OFF")
+                      << " | -/+ " << static_cast<int>(landmarkBrightness*100.0f+0.5f) << "%"
+                      << " | L All | Mouse Orbit | Wheel Zoom"
                       << " | FPS: " << std::fixed << std::setprecision(1) << fps;
                 glfwSetWindowTitle(window, title.str().c_str());
                 frameCount = 0;

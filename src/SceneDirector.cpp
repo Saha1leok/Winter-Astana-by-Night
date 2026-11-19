@@ -12,8 +12,10 @@ float ease(double value) {
     const float t = static_cast<float>(std::clamp(value, 0.0, 1.0));
     return t * t * t * (t * (t * 6.0f - 15.0f) + 10.0f);
 }
-CameraPose lowPose() { return {{1.0f, 5.2f, 25.0f}, {1.0f, 1.3f, -2.0f}}; }
-CameraPose finalPose() { return {{-5.5f, 20.0f, 34.0f}, {1.0f, 3.5f, -2.0f}}; }
+// Reference composition: a human-height view from the snowy western bank.
+// The river stays in the right foreground while the three landmarks span the skyline.
+CameraPose lowPose() { return {{-4.6f, 4.0f, 16.3f}, {2.8f, 2.55f, -1.2f}}; }
+CameraPose finalPose() { return {{-8.4f, 5.7f, 18.0f}, {2.8f, 3.15f, -2.2f}}; }
 CameraPose interpolate(const CameraPose& a, const CameraPose& b, float t) {
     return {glm::mix(a.position, b.position, t), glm::mix(a.target, b.target, t)};
 }

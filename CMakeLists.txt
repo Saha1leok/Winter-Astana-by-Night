@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(WinterAstanaWeek7 LANGUAGES CXX)
+project(WinterAstanaFinal LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -30,6 +30,12 @@ if(BUILD_TESTING)
     target_include_directories(reveal_tests PRIVATE src)
     target_link_libraries(reveal_tests PRIVATE glm::glm)
     add_test(NAME reveal_logic COMMAND reveal_tests)
+
+    add_executable(scene_node_tests tests/scene_node_tests.cpp)
+    target_include_directories(scene_node_tests PRIVATE src)
+    target_link_libraries(scene_node_tests PRIVATE glm::glm)
+    add_test(NAME scene_hierarchy COMMAND scene_node_tests)
+
     option(WINTER_ASTANA_GRAPHICS_TESTS "Run the OpenGL smoke test (requires a display)" OFF)
     if(WINTER_ASTANA_GRAPHICS_TESTS)
         add_test(NAME reveal_graphics COMMAND winter_astana --smoke-test "${CMAKE_CURRENT_BINARY_DIR}/reveal-captures")

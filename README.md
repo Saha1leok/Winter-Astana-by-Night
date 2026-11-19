@@ -1,6 +1,6 @@
 # Topic 7: Winter Astana by Night
 
-Week 7 starter project for Computer Graphics Fundamentals. It uses C++17 and OpenGL 3.3 Core without a game engine.
+Final project for Computer Graphics Fundamentals. It uses C++17 and OpenGL 3.3 Core without a game engine.
 
 ## Current progress
 
@@ -10,12 +10,16 @@ Week 7 starter project for Computer Graphics Fundamentals. It uses C++17 and Ope
 - detailed low-poly city blocks and Khan Shatyr, Bayterek and Ak Orda landmarks;
 - animated falling snow particles;
 - warm glowing windows and simple lamps along the embankment;
+- animated promenade, bridge, roofline and fir-tree garlands;
+- separately switchable Khan Shatyr, Bayterek and Ak Orda accent lighting;
 - distance fog and an animated ice shimmer;
 - orbit camera controlled by the mouse;
 - automatic animated camera rise, sequential block lighting and a fireworks finale;
 - custom GLSL vertex and fragment shaders;
 - VAO, VBO and EBO mesh data;
 - Model, View and Projection matrices;
+- an explicit parent-child hierarchy: each lamp bulb inherits the lamp-root transform;
+- per-fragment Blinn-Phong ambient, diffuse and specular lighting;
 - depth testing, framebuffer resize handling and FPS in the window title.
 
 The reveal continues the `feature/city-layout-modeling` scene and integrates Member 2's lighting from `dilnaz-lighting`. See [INTEGRATION.md](INTEGRATION.md) for the Member 3 particle and Member 5 timing interfaces and current limitations.
@@ -27,9 +31,18 @@ The reveal continues the `feature/city-layout-modeling` scene and integrates Mem
 - Press **R**: replay the camera reveal from the current view.
 - Press **Space**: skip the reveal and immediately regain orbit control.
 - Press **1** / **2**: toggle windows / lamps; **L**: toggle all lighting.
+- Press **G**: toggle garlands.
+- Press **H** / **B** / **K**: toggle Khan Shatyr / Bayterek / Ak Orda lighting.
+- Press **-** / **+**: decrease / increase landmark-light brightness.
 - Press **Esc**: close the program.
 
 The reveal runs automatically on launch. Mouse orbit and zoom become available after the finale (14.5 seconds), or immediately after **Space**. Lights fade in one block at a time as their skyline probes enter the camera view.
+
+The window title provides an on-screen controls reminder and the live FPS counter.
+
+## Team members and responsibilities
+
+Before submission, the team must replace this note with confirmed names, groups, and truthful responsibilities. Do not assign work to a person who cannot explain it during the defense.
 
 ## Project structure
 
@@ -51,9 +64,14 @@ The reveal runs automatically on launch. Mouse orbit and zoom become available a
 │   ├── SceneDirector.cpp / SceneDirector.h
 │   ├── Fireworks.cpp / Fireworks.h
 │   ├── FireworkRenderer.cpp / FireworkRenderer.h
-│   └── FrameCapture.h
-├── tests/reveal_tests.cpp
+│   ├── FrameCapture.h
+│   └── SceneNode.h
+├── tests/
+│   ├── reveal_tests.cpp
+│   └── scene_node_tests.cpp
 ├── INTEGRATION.md
+├── RUBRIC_CHECKLIST.md
+├── CREDITS.md
 ├── CMakeLists.txt
 └── README.md
 ```
@@ -113,7 +131,7 @@ cmake --build build
 
 On Windows, the executable may be in `build/Debug/winter_astana.exe` depending on the selected generator.
 
-## Week 7 technical notes
+## Technical notes
 
 The ground, river and buildings are separate meshes. The river center and width change gradually along its length, while the snow banks use a small sine-based height variation. The fragment shader receives `uIsIce`; when it is true, it generates cellular crack lines and a small shimmer from world coordinates, so no texture file is required. The camera position is calculated from yaw, pitch and distance, and `glm::lookAt` creates the View matrix.
 
@@ -136,3 +154,9 @@ ctest --test-dir build --output-on-failure
 ```
 
 Or run `./build/winter_astana --smoke-test build/reveal-captures` directly. It renders 15 simulated seconds, captures five BMP frames, checks OpenGL errors, verifies all four blocks and exercises the keyboard and mouse callbacks. Build, logic tests and the OpenGL smoke test were verified on macOS with AppleClang 17. Windows/Linux runtime checks remain for teammates on those platforms.
+
+See [RUBRIC_CHECKLIST.md](RUBRIC_CHECKLIST.md) for the requirement-to-evidence map and remaining submission risks.
+
+## AI Use Note
+
+OpenAI Codex assisted with review of the final-project requirements, build/integration diagnosis, an explicit lamp parent-child transform, per-fragment Blinn-Phong specular-lighting changes, documentation, and local verification. The team must review and understand retained changes, record its own modifications, and include the same specific disclosure in the final report. No claim is made that Codex produced team contributions, TA-machine FPS results, the report, the presentation, or the demo video.
