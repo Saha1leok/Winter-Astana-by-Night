@@ -76,8 +76,7 @@ Every member must be able to explain their code and project contribution during 
 ├── tests/                    Logic and hierarchy tests
 ├── CREDITS.md                Libraries, licenses and attribution
 ├── CMakeLists.txt
-├── report_winter.docx        Editable report source
-└── Final_Report.pdf          Submitted PDF report
+└── report_winter.docx        Final project report
 ```
 
 No generated `build` directory is required in the repository or submission archive.
@@ -171,8 +170,7 @@ The smoke test runs the reveal, checks for OpenGL errors, verifies block lightin
 ## Final deliverables
 
 - Source code and shaders in this repository.
-- Final report: `Final_Report.pdf`.
-- Editable report source: `report_winter.docx`.
+- Final report: `report_winter.docx`.
 - Presentation and demo video are submitted separately from the repository.
 - Demo video link: [Winter Astana by Night](https://youtu.be/sjPAO7QsP9M).
 - Dependency and attribution information: `CREDITS.md`.
