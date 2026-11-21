@@ -60,7 +60,9 @@ int main(int argc, char** argv) {
         std::cerr << "Usage: winter_astana [--smoke-test capture-directory]\n";
         return EXIT_FAILURE;
     }
-    const std::filesystem::path captures = smokeTest ? argv[2] : "";
+    const std::filesystem::path captures = smokeTest
+        ? std::filesystem::path(argv[2])
+        : std::filesystem::path{};
     if (!glfwInit()) {
         std::cerr << "GLFW initialization failed.\n";
         return EXIT_FAILURE;

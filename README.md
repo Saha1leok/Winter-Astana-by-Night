@@ -144,6 +144,11 @@ The executable copies the shader directory into its output folder during the bui
 6. Press `Cmd+Shift+B` on macOS or `Ctrl+Shift+B` on Windows and Linux.
 7. Select `Terminal > Run Task > Run Winter Astana`.
 
+Do not compile `src/main.cpp` as a single file with the Code Runner extension. The project
+uses C++17, several source files and linked OpenGL libraries, so it must be configured and
+built through CMake. If VS Code shows red errors around `std::filesystem`, run
+`CMake: Delete Cache and Reconfigure`, then select the installed compiler kit again.
+
 ## Tests
 
 ```bash
