@@ -17,11 +17,17 @@ find_package(glm CONFIG REQUIRED)
 
 add_executable(winter_astana
     src/main.cpp
+    src/CityScene.cpp
+    src/Controls.cpp
+    src/Decorations.cpp
     src/Shader.cpp
     src/Lighting.cpp
+    src/Mesh.cpp
+    src/RenderUtils.cpp
     src/SceneDirector.cpp
     src/Fireworks.cpp
     src/FireworkRenderer.cpp
+    src/Terrain.cpp
 )
 
 include(CTest)

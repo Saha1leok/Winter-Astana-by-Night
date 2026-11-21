@@ -12,7 +12,6 @@ struct SparkVertex {
     float size;
 };
 
-// Replaceable Member 3 implementation; contains no OpenGL or timing decisions.
 // Analytic motion gives the same positions at a given age at every frame rate.
 class Fireworks {
 public:

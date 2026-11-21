@@ -1,97 +1,102 @@
-# Topic 7: Winter Astana by Night
+# Winter Astana by Night
 
-Final project for Computer Graphics Fundamentals. It uses C++17 and OpenGL 3.3 Core without a game engine.
+Final project for Computer Graphics Fundamentals, Topic 7. The application is a real-time low-poly winter city written in C++17 with OpenGL 3.3 Core. It does not use a game engine.
 
-## Current progress
+## Implemented features
 
-- two low-poly snow banks with visible snow mounds and uneven height;
-- a separate wide, curved frozen-river mesh with a procedural crack/shimmer pattern;
-- simple raised embankment walls along the river;
-- detailed low-poly city blocks and Khan Shatyr, Bayterek and Ak Orda landmarks;
-- animated falling snow particles;
-- warm glowing windows and simple lamps along the embankment;
-- animated promenade, bridge, roofline and fir-tree garlands;
-- separately switchable Khan Shatyr, Bayterek and Ak Orda accent lighting;
-- distance fog and an animated ice shimmer;
-- orbit camera controlled by the mouse;
-- automatic animated camera rise, sequential block lighting and a fireworks finale;
-- custom GLSL vertex and fragment shaders;
-- VAO, VBO and EBO mesh data;
-- Model, View and Projection matrices;
-- an explicit parent-child hierarchy: each lamp bulb inherits the lamp-root transform;
-- per-fragment Blinn-Phong ambient, diffuse and specular lighting;
-- depth testing, framebuffer resize handling and FPS in the window title.
-
-The reveal continues the `feature/city-layout-modeling` scene and integrates Member 2's lighting from `dilnaz-lighting`. See [INTEGRATION.md](INTEGRATION.md) for the Member 3 particle and Member 5 timing interfaces and current limitations.
+- Modern OpenGL rendering with VAO, VBO and EBO objects.
+- Custom GLSL vertex and fragment shaders.
+- Model, View and Projection matrices.
+- Per-fragment Blinn-Phong lighting with ambient, diffuse and specular terms.
+- Directional light and multiple street-lamp point lights.
+- Low-poly buildings, Bayterek, Khan Shatyr and Ak Orda.
+- Curved frozen river with procedural ice cracks.
+- Uneven snow banks and snow on upward-facing surfaces.
+- Animated snowfall with wind drift and particle recycling.
+- Separate lamp-root and bulb-child transforms.
+- Mouse orbit camera and wheel zoom.
+- Window, lamp, garland and landmark lighting controls.
+- Automatic camera rise with block-by-block lighting.
+- Fireworks finale followed by gradual snow accumulation.
+- Live FPS counter in the window title.
 
 ## Controls
 
-- Hold the **left mouse button** and drag: orbit around the scene.
-- Use the **mouse wheel**: zoom in or out.
-- Press **R**: replay the camera reveal from the current view.
-- Press **Space**: skip the reveal and immediately regain orbit control.
-- Press **1** / **2**: toggle windows / lamps; **L**: toggle all lighting.
-- Press **G**: toggle garlands.
-- Press **H** / **B** / **K**: toggle Khan Shatyr / Bayterek / Ak Orda lighting.
-- Press **-** / **+**: decrease / increase landmark-light brightness.
-- Press **Esc**: close the program.
+| Input | Action |
+|---|---|
+| Left mouse drag | Orbit around the city after the reveal |
+| Mouse wheel | Zoom in or out |
+| R | Replay the cinematic reveal |
+| Space | Skip the reveal and enable orbit control |
+| 1 | Toggle building windows |
+| 2 | Toggle street lamps |
+| L | Toggle all main lights |
+| G | Toggle garlands |
+| H | Toggle Khan Shatyr lighting |
+| B | Toggle Bayterek lighting |
+| K | Toggle Ak Orda lighting |
+| - / + | Change landmark brightness |
+| Esc | Close the application |
 
-The reveal runs automatically on launch. Mouse orbit and zoom become available after the finale (14.5 seconds), or immediately after **Space**. Lights fade in one block at a time as their skyline probes enter the camera view.
-
-The window title provides an on-screen controls reminder and the live FPS counter.
+The reveal starts automatically. Orbit control becomes available after the finale or immediately after pressing Space.
 
 ## Team members and responsibilities
 
-Before submission, the team must replace this note with confirmed names, groups, and truthful responsibilities. Do not assign work to a person who cannot explain it during the defense.
+| Team member | Main responsibility |
+|---|---|
+| Kadirbay Tolganay | City layout, roads, buildings and low-poly landmark models; presentation preparation |
+| Kairkulova Dilnaz | Windows, street lighting, emissive effects and independent lighting groups; presentation preparation |
+| Zhaskairat Ayaulym | Snowfall particles, integration review, testing and final code fixes |
+| Myrzakhan Mereke | Frozen river, riverbanks, procedural ice and report preparation |
+| Amantai Zere | Orbit camera, cinematic reveal, block lighting, fireworks timing, report and demo video |
+
+Every member must be able to explain their code and project contribution during the defense.
 
 ## Project structure
 
 ```text
 .
-├── .vscode/
-├── shaders/
-│   ├── scene.vert
-│   ├── scene.frag
-│   ├── snow.vert
-│   ├── snow.frag
-│   ├── fireworks.vert
-│   └── fireworks.frag
+├── .vscode/                  VS Code build and run settings
+├── shaders/                  Scene, snow and fireworks shaders
 ├── src/
-│   ├── main.cpp
-│   ├── Shader.cpp
-│   ├── Shader.h
-│   ├── Lighting.cpp / Lighting.h
-│   ├── SceneDirector.cpp / SceneDirector.h
-│   ├── Fireworks.cpp / Fireworks.h
-│   ├── FireworkRenderer.cpp / FireworkRenderer.h
-│   ├── FrameCapture.h
-│   └── SceneNode.h
-├── tests/
-│   ├── reveal_tests.cpp
-│   └── scene_node_tests.cpp
-├── INTEGRATION.md
-├── RUBRIC_CHECKLIST.md
-├── CREDITS.md
+│   ├── main.cpp              Window setup and render loop
+│   ├── Controls.*            Keyboard and mouse input
+│   ├── Mesh.*                VAO, VBO and EBO mesh ownership
+│   ├── Terrain.*             Snow banks, river and radial geometry
+│   ├── CityScene.*           Buildings, landmarks and street furniture
+│   ├── Decorations.*         Animated garlands
+│   ├── Lighting.*            Windows and point-light upload
+│   ├── SceneDirector.*       Camera rise and reveal timeline
+│   ├── Fireworks.*           Firework particle simulation
+│   ├── FireworkRenderer.*    Firework rendering
+│   ├── RenderUtils.*         Shared draw and matrix helpers
+│   ├── SceneNode.h           Parent-child transform hierarchy
+│   ├── FrameCapture.h        Evidence-frame capture
+│   └── Shader.*              GLSL compilation and linking
+├── tests/                    Logic and hierarchy tests
+├── CREDITS.md                Libraries, licenses and attribution
 ├── CMakeLists.txt
-└── README.md
+└── Final_Report.pdf
 ```
 
-## Dependencies
+No generated `build` directory is required in the repository or submission archive.
+
+## Requirements
 
 - CMake 3.16 or newer
-- a C++17 compiler
+- C++17 compiler
+- OpenGL 3.3-compatible driver
 - GLFW 3.3 or newer
 - GLEW
 - GLM
-- OpenGL 3.3-compatible driver
 
-### macOS with Homebrew
+### macOS
 
 ```bash
 brew install cmake glfw glew glm
 ```
 
-### Ubuntu / Debian
+### Ubuntu or Debian
 
 ```bash
 sudo apt update
@@ -102,42 +107,44 @@ sudo apt install build-essential cmake libglfw3-dev libglew-dev libglm-dev
 
 ```powershell
 vcpkg install glfw3 glew glm
-```
-
-When configuring CMake on Windows, select the vcpkg toolchain file in the CMake Tools extension or run:
-
-```powershell
 cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=C:/path/to/vcpkg/scripts/buildsystems/vcpkg.cmake
+cmake --build build --config Release
 ```
 
-## Run in VS Code
+## Build and run
 
-1. Open this folder in VS Code.
-2. Install the recommended **C/C++** and **CMake Tools** extensions when VS Code asks.
-3. Install the dependencies for your operating system using the commands above.
-4. Open the Command Palette with **Cmd+Shift+P** on macOS or **Ctrl+Shift+P** on Windows/Linux.
-5. Run **CMake: Select a Kit** and choose your C++ compiler.
-6. Run **CMake: Configure**.
-7. Press **Cmd+Shift+B** on macOS or **Ctrl+Shift+B** on Windows/Linux to build.
-8. Open **Terminal > Run Task > Run Winter Astana**.
-
-You can also use the VS Code terminal:
+Run these commands from the project folder:
 
 ```bash
-cmake -S . -B build
-cmake --build build
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release
+```
+
+macOS and Linux:
+
+```bash
 ./build/winter_astana
 ```
 
-On Windows, the executable may be in `build/Debug/winter_astana.exe` depending on the selected generator.
+Windows:
 
-## Technical notes
+```powershell
+.\build\Release\winter_astana.exe
+```
 
-The ground, river and buildings are separate meshes. The river center and width change gradually along its length, while the snow banks use a small sine-based height variation. The fragment shader receives `uIsIce`; when it is true, it generates cellular crack lines and a small shimmer from world coordinates, so no texture file is required. The camera position is calculated from yaw, pitch and distance, and `glm::lookAt` creates the View matrix.
+The executable copies the shader directory into its output folder during the build.
 
-## Verification status
+## Run in VS Code
 
-The source targets OpenGL 3.3 Core. Build and logic tests:
+1. Open the project folder in VS Code.
+2. Install the recommended C/C++ and CMake Tools extensions.
+3. Open the Command Palette.
+4. Select `CMake: Select a Kit` and choose the installed compiler.
+5. Run `CMake: Configure`.
+6. Press `Cmd+Shift+B` on macOS or `Ctrl+Shift+B` on Windows and Linux.
+7. Select `Terminal > Run Task > Run Winter Astana`.
+
+## Tests
 
 ```bash
 cmake -S . -B build -DBUILD_TESTING=ON
@@ -145,18 +152,20 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-Logic tests run without opening a window and cover input limits, camera handoff, replay/skip, sequential lighting, visibility, timing at 30/60/144 FPS, stalled frames and bounded particle lifetimes. To also run the real OpenGL smoke test on a machine with a display:
+To include the real OpenGL smoke test:
 
 ```bash
-cmake -S . -B build -DWINTER_ASTANA_GRAPHICS_TESTS=ON
+cmake -S . -B build -DBUILD_TESTING=ON -DWINTER_ASTANA_GRAPHICS_TESTS=ON
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-Or run `./build/winter_astana --smoke-test build/reveal-captures` directly. It renders 15 simulated seconds, captures five BMP frames, checks OpenGL errors, verifies all four blocks and exercises the keyboard and mouse callbacks. Build, logic tests and the OpenGL smoke test were verified on macOS with AppleClang 17. Windows/Linux runtime checks remain for teammates on those platforms.
+The smoke test runs the reveal, checks for OpenGL errors, verifies block lighting and interactions, and saves seven evidence frames.
 
-See [RUBRIC_CHECKLIST.md](RUBRIC_CHECKLIST.md) for the requirement-to-evidence map and remaining submission risks.
+## Final deliverables
 
-## AI Use Note
-
-OpenAI Codex assisted with review of the final-project requirements, build/integration diagnosis, an explicit lamp parent-child transform, per-fragment Blinn-Phong specular-lighting changes, documentation, and local verification. The team must review and understand retained changes, record its own modifications, and include the same specific disclosure in the final report. No claim is made that Codex produced team contributions, TA-machine FPS results, the report, the presentation, or the demo video.
+- Source code and shaders in this repository.
+- Final report: `Final_Report.pdf`.
+- Presentation and demo video are submitted separately from the repository.
+- Demo video link: [Winter Astana by Night](https://youtu.be/sjPAO7QsP9M).
+- Dependency and attribution information: `CREDITS.md`.

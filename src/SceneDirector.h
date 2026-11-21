@@ -26,8 +26,7 @@ private:
     float distance_ = 27.0f;
 };
 
-// Member 3 consumes these world-space burst requests. delaySeconds is relative
-// to the end of the camera rise; the particle implementation owns flight time.
+// Firework delays are measured from the end of the camera rise.
 struct FireworkCue {
     double delaySeconds;
     glm::vec3 position;
@@ -35,7 +34,6 @@ struct FireworkCue {
     std::uint32_t seed;
 };
 
-// Member 5 owns these timings, independently of camera input and rendering.
 struct RevealTimeline {
     double approachSeconds = 1.5;
     double riseSeconds = 8.0;
@@ -52,7 +50,7 @@ struct RevealTimeline {
 };
 
 struct RevealHooks {
-    // Member 2: stable city block IDs 1..4, intensity in [0,1].
+    // Stable city block IDs 1..4 with intensity in [0,1].
     std::function<void(int, float)> setBlockLight;
     // Age makes cue dispatch correct even when one frame crosses several cues.
     std::function<void(const FireworkCue&, double ageSeconds)> launchFirework;
